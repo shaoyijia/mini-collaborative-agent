@@ -1,18 +1,25 @@
-import { useState } from 'react';
-import PiProviderSettings from '../chat/PiProviderSettings';
-const ADDITIONAL_PROVIDERS = [
+import PiProviderLogin, {
+  usePiStatus,
+  type PiStatusState,
+} from '../chat/PiProviderLogin';
+
+// Providers Coco connects to directly. Everything else (OpenAI, Anthropic,
+// Google, …) is offered through Pi, which handles sign-in.
+const DIRECT_PROVIDERS = [
   ['tinker', 'Tinker'],
   ['tinfoil', 'Tinfoil (confidential)'],
   ['hosted_vllm', 'OpenAI-compatible endpoint'],
   ['lm_studio', 'LM Studio (local)'],
 ] as const;
-interface PiModel {
-  provider: string;
-  id: string;
-  name: string;
-  input?: string[];
-}
 const ENDPOINT_PROVIDERS = new Set(['hosted_vllm', 'lm_studio']);
+const LEGACY_PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Google Gemini',
+  open_anonymity: 'Open Anonymity',
+};
+// Pi providers are encoded in the provider dropdown as `pi:<provider id>`.
+const PI_PREFIX = 'pi:';
 
 export interface ModelDraft {
   id: string;
@@ -21,6 +28,8 @@ export interface ModelDraft {
   model: string;
   apiKey: string;
   baseUrl: string;
+  /** For `provider: 'pi'`: the Pi provider chosen before a model is picked. */
+  piProvider?: string;
 }
 
 export interface ConnectionTestStatus {
@@ -28,33 +37,52 @@ export interface ConnectionTestStatus {
   message: string;
 }
 
+/** The Pi provider of a Pi model draft (`pi/<provider>/<model>`). */
+const piProviderOf = (draft: ModelDraft) =>
+  draft.piProvider || draft.model.split('/')[1] || '';
+
 function ModelFields({
   value,
   onChange,
   onTest,
   testStatus,
-  piModels,
+  pi,
 }: {
-  piModels: PiModel[];
   value: ModelDraft;
   onChange: (next: ModelDraft) => void;
   onTest: () => void;
   testStatus: ConnectionTestStatus | undefined;
+  pi: PiStatusState;
 }) {
+  const isPi = value.provider === 'pi';
+  const piProvider = isPi ? piProviderOf(value) : '';
+  const piProviders = pi.status?.providers ?? [];
+  const connected = piProviders.find((p) => p.id === piProvider)?.connected;
+  const piModels = (pi.status?.models ?? []).filter(
+    (m) => m.provider === piProvider,
+  );
   const legacyProvider =
-    value.provider !== 'pi' &&
-    !ADDITIONAL_PROVIDERS.some(([id]) => id === value.provider);
+    !isPi && !DIRECT_PROVIDERS.some(([id]) => id === value.provider);
   const update = (field: keyof ModelDraft, next: string) =>
     onChange({ ...value, [field]: next });
-  let modelPlaceholder = 'Model ID (provider/model)';
-  if (value.provider === 'hosted_vllm') {
-    modelPlaceholder = 'Exact model ID returned by /v1/models';
-  }
+  const selectProvider = (next: string) =>
+    onChange({
+      ...value,
+      ...(next.startsWith(PI_PREFIX)
+        ? { provider: 'pi', piProvider: next.slice(PI_PREFIX.length) }
+        : { provider: next, piProvider: undefined }),
+      model: '',
+      apiKey: '',
+      baseUrl: '',
+    });
+  const modelPlaceholder =
+    value.provider === 'hosted_vllm'
+      ? 'Exact model ID returned by /v1/models'
+      : 'Model ID (provider/model)';
+
   return (
     <div className="ob-model-card">
-      <div className="ob-model-card-title">
-        {value.label || 'Additional model'}
-      </div>
+      <div className="ob-model-card-title">{value.label || 'New model'}</div>
       <input
         className="ob-custom-input"
         value={value.label}
@@ -62,51 +90,46 @@ function ModelFields({
         placeholder="Display name"
         onChange={(event) => update('label', event.target.value)}
       />
-      {legacyProvider && (
-        <p className="ob-sub">
-          Existing direct connection. You can keep using it or connect this
-          provider through Pi above.
-        </p>
-      )}
-      {value.provider !== 'pi' && (
-        <select
-          className="ob-custom-input"
-          aria-label="Additional provider"
-          value={value.provider}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              provider: event.target.value,
-              model: '',
-              apiKey: '',
-              baseUrl: '',
-            })
-          }
-        >
-          {legacyProvider && (
-            <option value={value.provider}>
-              {(
-                {
-                  openai: 'OpenAI',
-                  anthropic: 'Anthropic',
-                  gemini: 'Google Gemini',
-                  open_anonymity: 'Open Anonymity',
-                } as Record<string, string>
-              )[value.provider] || value.provider}{' '}
-              (existing connection)
-            </option>
-          )}
-          {ADDITIONAL_PROVIDERS.map(([id, label]) => (
+      <select
+        className="ob-custom-input"
+        aria-label="Model provider"
+        value={isPi ? `${PI_PREFIX}${piProvider}` : value.provider}
+        onChange={(event) => selectProvider(event.target.value)}
+      >
+        {isPi && !piProviders.some((p) => p.id === piProvider) && (
+          <option value={`${PI_PREFIX}${piProvider}`}>
+            {piProvider || 'Choose a provider…'}
+          </option>
+        )}
+        {legacyProvider && (
+          <option value={value.provider}>
+            {LEGACY_PROVIDER_LABELS[value.provider] || value.provider} (existing
+            connection)
+          </option>
+        )}
+        <optgroup label="Direct connection">
+          {DIRECT_PROVIDERS.map(([id, label]) => (
             <option key={id} value={id}>
               {label}
             </option>
           ))}
-        </select>
-      )}
-      {value.provider === 'pi' ? (
+        </optgroup>
+        {piProviders.length > 0 && (
+          <optgroup label="Through Pi (sign in or API key)">
+            {piProviders.map((p) => (
+              <option key={p.id} value={`${PI_PREFIX}${p.id}`}>
+                {p.name}
+                {p.connected ? ' — connected' : ''}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      {isPi && <PiProviderLogin provider={piProvider} pi={pi} />}
+      {isPi && connected && (
         <select
           className="ob-custom-input"
-          aria-label="Chat Pi model"
+          aria-label="Model"
           value={value.model}
           onChange={(event) => {
             const selected = piModels.find(
@@ -115,33 +138,29 @@ function ModelFields({
             onChange({
               ...value,
               model: event.target.value,
-              label: selected?.name || value.label,
+              label: value.label || selected?.name || '',
             });
           }}
         >
-          <option value="">Choose a connected model…</option>
+          <option value="">Choose a model…</option>
           {value.model &&
             !piModels.some(
               (m) => `pi/${m.provider}/${m.id}` === value.model,
             ) && (
-              <option value={value.model}>
-                {value.model} (connect provider to use)
-              </option>
+              <option value={value.model}>{value.model} (unavailable)</option>
             )}
           {piModels.map((m) => (
-            <option
-              key={`${m.provider}/${m.id}`}
-              value={`pi/${m.provider}/${m.id}`}
-            >
-              {m.name} · {m.provider}
+            <option key={m.id} value={`pi/${m.provider}/${m.id}`}>
+              {m.name}
             </option>
           ))}
         </select>
-      ) : (
+      )}
+      {!isPi && (
         <input
           className="ob-custom-input"
           value={value.model}
-          aria-label="Additional model ID"
+          aria-label="Model ID"
           placeholder={modelPlaceholder}
           onChange={(event) => update('model', event.target.value)}
         />
@@ -158,7 +177,7 @@ function ModelFields({
           onChange={(event) => update('baseUrl', event.target.value)}
         />
       )}
-      {value.provider !== 'lm_studio' && value.provider !== 'pi' && (
+      {!isPi && value.provider !== 'lm_studio' && (
         <input
           className="ob-custom-input"
           type="password"
@@ -170,27 +189,29 @@ function ModelFields({
           onChange={(event) => update('apiKey', event.target.value)}
         />
       )}
-      <div className="ob-connection-test-row">
-        <button
-          type="button"
-          className="ob-connection-test-btn"
-          disabled={testStatus?.state === 'testing'}
-          onClick={onTest}
-        >
-          {testStatus?.state === 'testing' ? 'Testing…' : 'Test connection'}
-        </button>
-        {testStatus?.state === 'success' && (
-          <span className="ob-connection-test-success">
-            {testStatus.message}
-          </span>
-        )}
-        {testStatus?.state === 'error' && (
-          <details className="ob-connection-test-error">
-            <summary>Connection failed — show details</summary>
-            <pre>{testStatus.message}</pre>
-          </details>
-        )}
-      </div>
+      {(!isPi || connected) && (
+        <div className="ob-connection-test-row">
+          <button
+            type="button"
+            className="ob-connection-test-btn"
+            disabled={testStatus?.state === 'testing'}
+            onClick={onTest}
+          >
+            {testStatus?.state === 'testing' ? 'Testing…' : 'Test connection'}
+          </button>
+          {testStatus?.state === 'success' && (
+            <span className="ob-connection-test-success">
+              {testStatus.message}
+            </span>
+          )}
+          {testStatus?.state === 'error' && (
+            <details className="ob-connection-test-error">
+              <summary>Connection failed — show details</summary>
+              <pre>{testStatus.message}</pre>
+            </details>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -212,142 +233,76 @@ export default function ModelsStep({
   testStatuses: Record<string, ConnectionTestStatus>;
   onTest: (model: ModelDraft) => void;
 }) {
-  const [piStatus, setPiStatus] = useState<any>(null);
-  const piModels: PiModel[] = (piStatus?.models ?? []).filter(
-    (model: PiModel) =>
-      piStatus.providers.some(
-        (provider: any) => provider.id === model.provider && provider.connected,
-      ),
-  );
-  const addConnection = (connection: ModelDraft) => {
-    setTutors([...tutors, connection]);
-    if (!defaultTutorId) setDefaultTutorId(connection.id);
-  };
-  const addAdditional = () =>
-    addConnection({
+  const pi = usePiStatus();
+  const addModel = () => {
+    // Start from a provider the user is already signed in to, if any.
+    const providers = pi.status?.providers ?? [];
+    const piProvider = (providers.find((p) => p.connected) ?? providers[0])?.id;
+    const draft: ModelDraft = {
       id: `model-${Date.now()}`,
       label: '',
-      provider: 'hosted_vllm',
+      provider: piProvider ? 'pi' : 'tinker',
+      piProvider,
       model: '',
       apiKey: '',
       baseUrl: '',
-    });
-  const renderChatModel = (tutor: ModelDraft) => (
-    <div key={tutor.id} className="ob-model-wrap">
-      <ModelFields
-        piModels={piModels}
-        value={tutor}
-        onChange={(next) =>
-          setTutors(tutors.map((item) => (item.id === tutor.id ? next : item)))
-        }
-        onTest={() => onTest(tutor)}
-        testStatus={testStatuses[tutor.id]}
-      />
-      <div className="ob-model-actions">
-        <label htmlFor={`default-${tutor.id}`}>
-          <input
-            id={`default-${tutor.id}`}
-            type="radio"
-            name="default-chat-model"
-            checked={defaultTutorId === tutor.id}
-            onChange={() => setDefaultTutorId(tutor.id)}
-          />{' '}
-          Default for new chats
-        </label>
-        <button
-          type="button"
-          className="ob-model-remove"
-          aria-label={`Remove ${tutor.label || 'model'}`}
-          onClick={() => {
-            const next = tutors.filter((item) => item.id !== tutor.id);
-            setTutors(next);
-            if (defaultTutorId === tutor.id)
-              setDefaultTutorId(next[0]?.id || '');
-          }}
-        >
-          Remove
-        </button>
-      </div>
-    </div>
-  );
+    };
+    setTutors([...tutors, draft]);
+    if (!defaultTutorId) setDefaultTutorId(draft.id);
+  };
+
   return (
-    <>
-      <section aria-labelledby="pi-connections-heading">
-        <h3 id="pi-connections-heading" className="ob-model-section-title">
-          Pi connections
-        </h3>
-        <p className="ob-sub">
-          Connect OpenAI, Anthropic, Google, and other Pi providers, then add
-          the models you want in Coco chat.
-        </p>
-        <details className="ob-provider-disclosure">
-          <summary className="ob-model-add">Connect a provider</summary>
-          <PiProviderSettings onStatus={setPiStatus} />
-        </details>
-        {tutors.filter((item) => item.provider === 'pi').map(renderChatModel)}
-        <label className="coco-field">
-          Add a Pi model to chat
-          <select
-            className="ob-custom-input"
-            value=""
-            onChange={(event) => {
-              const selected = piModels.find(
-                (model) =>
-                  `pi/${model.provider}/${model.id}` === event.target.value,
-              );
-              if (!selected) return;
-              addConnection({
-                id: `pi-${Date.now()}`,
-                label: selected.name,
-                provider: 'pi',
-                model: event.target.value,
-                apiKey: '',
-                baseUrl: '',
-              });
-            }}
-          >
-            <option value="">Choose a connected model…</option>
-            {piModels
-              .filter(
-                (model) =>
-                  !tutors.some(
-                    (item) => item.model === `pi/${model.provider}/${model.id}`,
-                  ),
+    <section aria-labelledby="chat-models-heading">
+      <h3 id="chat-models-heading" className="ob-model-section-title">
+        Add available models to Coco
+      </h3>
+      <p className="ob-sub">
+        Pick a provider for each model. Models you add show up in the chat.
+      </p>
+      {tutors.map((tutor) => (
+        <div key={tutor.id} className="ob-model-wrap">
+          <ModelFields
+            pi={pi}
+            value={tutor}
+            onChange={(next) =>
+              setTutors(
+                tutors.map((item) => (item.id === tutor.id ? next : item)),
               )
-              .map((model) => (
-                <option
-                  key={`${model.provider}/${model.id}`}
-                  value={`pi/${model.provider}/${model.id}`}
-                >
-                  {model.name} · {model.provider}
-                </option>
-              ))}
-          </select>
-        </label>
-        {!piModels.length && (
-          <p className="ob-sub">
-            Connect a provider above to load its models. Additional connections
-            below also work without Pi.
-          </p>
-        )}
-      </section>
-      <section aria-labelledby="additional-connections-heading">
-        <h3
-          id="additional-connections-heading"
-          className="ob-model-section-title"
-        >
-          Additional model connections
-        </h3>
-        <p className="ob-sub">
-          Add Tinker, Tinfoil, LM Studio, or a custom OpenAI-compatible
-          endpoint. These models appear alongside Pi models in the chat picker.
-        </p>
-        {tutors.filter((item) => item.provider !== 'pi').map(renderChatModel)}
-        <button type="button" className="ob-model-add" onClick={addAdditional}>
-          + Add model connection
-        </button>
-      </section>
+            }
+            onTest={() => onTest(tutor)}
+            testStatus={testStatuses[tutor.id]}
+          />
+          <div className="ob-model-actions">
+            <label htmlFor={`default-${tutor.id}`}>
+              <input
+                id={`default-${tutor.id}`}
+                type="radio"
+                name="default-chat-model"
+                checked={defaultTutorId === tutor.id}
+                onChange={() => setDefaultTutorId(tutor.id)}
+              />{' '}
+              Default for new chats
+            </label>
+            <button
+              type="button"
+              className="ob-model-remove"
+              aria-label={`Remove ${tutor.label || 'model'}`}
+              onClick={() => {
+                const next = tutors.filter((item) => item.id !== tutor.id);
+                setTutors(next);
+                if (defaultTutorId === tutor.id)
+                  setDefaultTutorId(next[0]?.id || '');
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="ob-model-add" onClick={addModel}>
+        + Add a model
+      </button>
       {error && <div className="ob-model-error">{error}</div>}
-    </>
+    </section>
   );
 }

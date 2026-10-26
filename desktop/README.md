@@ -191,13 +191,14 @@ Release builds repeat this check before packaging, then run
 `tutor-server --dependency-smoke-test` from the frozen services bundle before
 signing. A failure stops the release before installers are published.
 
-### Native Pi provider login
+### Model providers
 
-In **Settings → Models & providers → Agent connection** (also available during
-onboarding), choose a Pi provider and sign in with its OAuth button or enter an API
-key. Complete the browser/device-code flow or paste the callback when prompted,
-choose a model, then click **Use native Pi**. **Use Coco bridge** switches back to
-the existing local Python model configuration.
+In **Settings → Models & providers** (also shown during onboarding), each chat
+model has one **Model provider** dropdown. Providers under **Through Pi** (OpenAI,
+Anthropic, Google, …) sign in from the card with their OAuth button or an API key;
+once connected, pick one of the provider's models. Providers under **Direct
+connection** (Tinker, Tinfoil, an OpenAI-compatible endpoint, LM Studio) take a
+model ID and, where needed, an API key or base URL.
 
 Pi owns provider authentication and token refresh. Credentials are stored in the
 SDK's `pi/auth.json` under Electron's user-data directory; they are not sent to the

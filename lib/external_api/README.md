@@ -2,8 +2,9 @@
 
 ### Model providers
 
-In desktop **Settings → Models & providers**, connect a provider through Pi once,
-then add its models to chat. Models that receive pasted images must support image
+In desktop **Settings → Models & providers**, pick a provider from the model's
+**Model provider** dropdown. For providers listed under **Through Pi**, sign in
+once from the card, then choose one of the provider's models. Models that receive pasted images must support image
 input, and voice messages need a model that accepts audio; unsupported input
 produces an error rather than silently routing to another provider.
 

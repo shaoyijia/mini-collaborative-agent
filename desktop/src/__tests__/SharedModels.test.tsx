@@ -1,11 +1,5 @@
 import '@testing-library/jest-dom';
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import LocalModelSettings from '../renderer/components/chat/LocalModelSettings';
 
 it('saves connected Pi chat models through the shared configuration', async () => {
@@ -46,9 +40,9 @@ it('saves connected Pi chat models through the shared configuration', async () =
   const view = render(<LocalModelSettings />);
   await screen.findByDisplayValue('Fast');
   await waitFor(() =>
-    expect(
-      screen.getByRole('heading', { name: 'Pi connections' }),
-    ).toBeInTheDocument(),
+    expect(screen.getAllByLabelText('Model provider')[0]).toHaveValue(
+      'pi:test',
+    ),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
   await screen.findByText('Saved');
@@ -60,7 +54,6 @@ it('saves connected Pi chat models through the shared configuration', async () =
     defaultTutorId: 'chat',
     credentials: {},
   });
-  expect(screen.queryByText('Use native Pi')).not.toBeInTheDocument();
   view.unmount();
 });
 
@@ -105,7 +98,7 @@ it('drops a sensing model left by an older configuration and offers no sensing s
   view.unmount();
 });
 
-it('adds Pi and additional models to one chat list with only four additional providers', async () => {
+it('offers Pi and direct providers in one dropdown and saves both', async () => {
   const invoke = jest.fn(async (channel) => {
     if (channel === 'pi-provider')
       return {
@@ -121,35 +114,26 @@ it('adds Pi and additional models to one chat list with only four additional pro
   });
   (window as any).electron = { ipcRenderer: { invoke } };
   const view = render(<LocalModelSettings />);
-  await screen.findByRole('option', { name: 'Pi chat · test' });
-  fireEvent.change(screen.getByLabelText('Add a Pi model to chat'), {
+  const add = await screen.findByRole('button', { name: '+ Add a model' });
+  await waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith('pi-provider', 'status', undefined),
+  );
+  fireEvent.click(add);
+  const [piCard] = screen.getAllByLabelText('Model provider');
+  expect(
+    [...(piCard as HTMLSelectElement).options].map((option) => option.value),
+  ).toEqual(['tinker', 'tinfoil', 'hosted_vllm', 'lm_studio', 'pi:test']);
+  fireEvent.change(await screen.findByLabelText('Model'), {
     target: { value: 'pi/test/chat' },
   });
-  expect(
-    within(
-      screen.getByRole('region', { name: 'Pi connections' }),
-    ).getByDisplayValue('Pi chat'),
-  ).toBeInTheDocument();
-  fireEvent.click(
-    screen.getByRole('button', { name: '+ Add model connection' }),
-  );
-  const additional = within(
-    screen.getByRole('region', { name: 'Additional model connections' }),
-  );
-  const providers = additional.getByLabelText(
-    'Additional provider',
-  ) as HTMLSelectElement;
-  expect([...providers.options].map((option) => option.value)).toEqual([
-    'tinker',
-    'tinfoil',
-    'hosted_vllm',
-    'lm_studio',
-  ]);
-  fireEvent.change(providers, { target: { value: 'lm_studio' } });
-  fireEvent.change(additional.getByLabelText('Model display name'), {
+
+  fireEvent.click(add);
+  const direct = screen.getAllByLabelText('Model provider')[1];
+  fireEvent.change(direct, { target: { value: 'lm_studio' } });
+  fireEvent.change(screen.getAllByLabelText('Model display name')[1], {
     target: { value: 'Local chat' },
   });
-  fireEvent.change(additional.getByLabelText('Additional model ID'), {
+  fireEvent.change(screen.getByLabelText('Model ID'), {
     target: { value: 'lm_studio/local' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
@@ -160,12 +144,13 @@ it('adds Pi and additional models to one chat list with only four additional pro
   expect(saved[1]).not.toHaveProperty('sensing');
   expect(saved[1]).toMatchObject({
     tutors: [
-      { provider: 'pi', model: 'pi/test/chat' },
+      { provider: 'pi', model: 'pi/test/chat', label: 'Pi chat' },
       { provider: 'lm_studio', model: 'lm_studio/local' },
     ],
   });
+  expect(saved[1].tutors[0]).not.toHaveProperty('piProvider');
   expect(saved[1].defaultTutorId).toBe(saved[1].tutors[0].id);
-  // Users can choose an additional connection alone; removing the default updates it.
+  // Removing the default makes the remaining model the default.
   fireEvent.click(screen.getByRole('button', { name: 'Remove Pi chat' }));
   expect(
     screen.getByRole('radio', { name: 'Default for new chats' }),

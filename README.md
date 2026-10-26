@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/github-logo.svg" width="40%">
+  <img src="assets/coco.jpg" width="80%">
 </p>
 
 **A minimal collaborative agent you can read end to end**
 
-This repo is a stripped-down fork of [Coco](https://github.com/collaborative-agents/coco), made for teaching. Coco is a desktop agent that you chat with by text or voice and that can work on files in a folder you pick. Full Coco also watches your screen so it can step in proactively and build a memory of you. This fork removes all of that: **there is no screen sensing, no memory, and no OS permission beyond the microphone.** What is left is small enough to show how a collaborative agent works:
+A lightweight desktop agent for learning, building, and experimenting with **human–agent collaboration**. It provides:
 
 1. **Two collaboration primitives.** The agent can *send the user a message* and *wait for the user to continue* ([Primitives](#1-two-primitives-from-co-gym)).
 2. **Two interfaces.** A desktop GUI (an avatar and a chat window) and voice (push-to-talk and a "Hey Coco" wake word) ([Interfaces](#2-interfaces-gui-and-voice)).
@@ -27,28 +27,14 @@ npm install
 npm start
 ```
 
-On first launch, onboarding asks for your name, whether to turn on voice activation, the chat model(s) to use, and where the avatar should live. Voice messages are transcribed by your chat model, so pick one that accepts audio input (for example a Gemini model) if you plan to talk to Coco.
-
 ## How it's put together
 
-```
- ┌──────────────── Desktop app (Electron) ─────────────────┐
- │  Avatar window  ·  Chat window  ·  Menu-bar / tray icon  │   GUI
- │  Mic button  ·  "Hey Coco" wake-word listener            │   voice
- │                                                          │
- │  Pi agent harness (one runtime per conversation)         │
- │   ├─ built-in tools: read / write / edit / bash          │
- │   └─ ask_user_question tool  ◄── primitive 1             │
- └───────────────▲──────────────────────────────────────────┘
-                 │ authenticated loopback HTTP
- ┌───────────────┴──────── Tutor service (:8081) ───────────┐
- │  lib/proactive_tutor: model gateway, context, voice      │
- │  transcription, local wake-word worker                   │
- └──────────────────────────────────────────────────────────┘
-```
+The system consists of two components:
 
-- **Desktop app** (`desktop/`). It holds every user-facing surface and runs the agent loop with the [pi](https://github.com/earendil-works/pi) coding-agent SDK (`desktop/release/app/agent/`).
-- **Tutor service** (`lib/proactive_tutor`). A local FastAPI server. It routes the agent's model calls to whichever provider you configure (`lib/external_api`), builds the conversation context, transcribes voice messages, and hosts the wake-word worker. The package keeps its upstream name.
+1. Desktop app (`desktop/`): An Electron application providing the avatar, chat, voice controls, and agent execution through the [pi SDK](https://github.com/earendil-works/pi). The agent supports reading, writing, editing files, and running shell commands.
+2. Tutor service (lib/proactive_tutor/): A local FastAPI service handling model requests, conversation context, audio transcription, and wake-word detection.
+
+The components communicate over authenticated local HTTP.
 
 ## 1. Two primitives for Human-Agent Collaboration
 
@@ -63,7 +49,7 @@ The agent sends the user a message in two ways:
 
 ### Wait for the user to continue
 
-When the agent finishes replying, its turn ends and control goes back to the user. The pi run resolves, `runAgentTurn` in `desktop/src/main/main.ts` emits `done`, and nothing more happens until the user sends a message, answers a question card, or speaks.
+When the agent finishes replying, its turn ends and control goes back to the user.
 
 The user also has these controls during and after a run:
 
@@ -71,24 +57,24 @@ The user also has these controls during and after a run:
 - **Reply-ready reminder.** If the chat window is out of view, the avatar shows short progress notes while the run continues and a "Reply ready" bubble when it ends (`AgentProgressReminder`, `agent-reply-ready`).
 - **Resume.** Every conversation is saved locally and can be reopened and continued later.
 
-**This version cannot sense user activity.** While it waits, the agent sees nothing. If you want the agent to be aware of the user activity, derive useful user memory from computer use, and decide on its own when to step back in and can personalize its help, we need to add additional module to achieve this. See [collaborative-agents/coco](https://github.com/collaborative-agents/coco) for that design.
+**This version cannot sense user activity.** If you want the agent to be aware of the user activity, derive useful user memory from computer use, and decide on its own when to step back in and can personalize its help, we need to add additional module to achieve this. See [collaborative-agents/coco](https://github.com/collaborative-agents/coco) for that design.
 
 ## 2. Interfaces: GUI and voice
 
 ### GUI
 
-- **Desktop avatar**. An always-on-top pet. Click it or use its ••• menu to open chat or settings. It is also where the agent's progress and reply-ready bubbles appear. You can hide it in Settings and use the menu-bar (macOS) or tray icon instead.
-- **Chat window**. This shows streamed replies, tool activity, question cards, and the Stop button. You can also pick the working folder for the conversation, switch models per conversation, view conversation history, and inspect the agent's context.
-- **Global shortcut.** `Cmd/Ctrl + Shift + Space` opens the chat from anywhere.
+- **Avatar:** Always-on-top companion displaying agent progress and notifications.
+- **Chat:** Streaming responses, tool activity, working-folder selection, model switching, and conversation history.
+- **Shortcut:** Cmd/Ctrl + Shift + Space to open chat.
 
 ### Voice
 
-- **Push-to-talk.** Click the mic in the composer.
-- **Wake word ("Coco", "Hi Coco", "Hey Coco").** This is off by default; turn it on in onboarding or Settings. On a detection, Coco opens the chat and starts push-to-talk recording. Wake-word audio never leaves your machine. Only the message you speak after the wake word is sent for transcription.
+- **Push-to-talk:** Speak directly through the chat interface.
+- **Wake word:** Optionally activate the agent with "Coco", "Hi Coco", or "Hey Coco". Wake-word detection runs locally.
 
 ## Data & privacy
 
-There is no telemetry and no Coco server. The only data that leaves your machine is what you send to the model provider you configure, which is your messages, attached images and files, and recorded voice messages. Everything else stays in the app's user-data folder. See [PRIVACY.md](PRIVACY.md) for the details.
+There is no telemetry and no Coco server. The only data that leaves your machine is what you send to the model provider you configure. See [PRIVACY.md](PRIVACY.md) for the details. The default path for local data storage is as follows:
 
 - **macOS**: `~/Library/Application Support/coco`
 - **Windows**: `%APPDATA%\coco`

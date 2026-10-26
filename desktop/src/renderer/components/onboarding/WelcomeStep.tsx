@@ -33,7 +33,7 @@ export default function WelcomeStep() {
           <strong>Works with you</strong>
           <span>
             Coco asks when it needs your input and lets you know when its reply
-            is ready. It never watches your screen.
+            is ready.
           </span>
         </div>
       </div>

@@ -99,14 +99,11 @@
   line-height: var(--coco-leading-body);
 }
 .local-settings > .coco-button { align-self: flex-start; }
-.pi-provider-settings.ob-model-card {
-  gap: var(--coco-space-3);
-  padding: var(--coco-space-4);
-  border-color: var(--coco-color-border);
-  border-radius: var(--coco-radius-card);
-  background: var(--coco-color-surface-subtle);
+.pi-provider-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--coco-space-2);
 }
-.pi-provider-settings h4 { font-size: var(--coco-text-body); }
 .pi-provider-settings .coco-actions .coco-button {
   flex: 0 0 auto;
   padding: var(--coco-space-2) var(--coco-space-3);
