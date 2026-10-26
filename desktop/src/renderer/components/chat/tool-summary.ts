@@ -1,4 +1,4 @@
-import type { TutorToolCall } from '../observation-types';
+import type { TutorToolCall } from '../agent-types';
 
 // A small display parser, never a shell interpreter. Quoted script contents are
 // kept as arguments so words inside Python/JS code cannot masquerade as commands.
@@ -99,9 +99,6 @@ export default function toolSummary(call: TutorToolCall): string {
     grep: 'Search file contents',
     find: 'Find files',
     ls: 'Inspect a folder',
-    observe_screen: 'Check the current screen',
-    get_user_context: 'Look up relevant context',
-    get_recent_observations: 'Review recent activity',
   };
   if (call.name !== 'bash') return labels[call.name] ?? 'Use a tool';
   const { command } = call.arguments;

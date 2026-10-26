@@ -14,7 +14,6 @@ export interface SessionContextInput {
   problem: string;
   user_name: string;
   ai_tools: string[];
-  memory: string;
   messages: { role: string; text: string }[];
 }
 
@@ -127,7 +126,9 @@ export default class PiHarness {
       const [, provider, ...modelParts] = selectedModel.split('/');
       const connection = selectedModel.startsWith('pi/')
         ? { mode: 'native' as const, provider, model: modelParts.join('/') }
-        : selectedModel ? { mode: 'coco' as const } : readPiConnection();
+        : selectedModel
+          ? { mode: 'coco' as const }
+          : readPiConnection();
       let localContext = false;
       const prepare = async () => {
         const value = await request(
@@ -144,7 +145,7 @@ export default class PiHarness {
               if (active.stopped) throw error;
               return {
                 instructions: '',
-                profile: `Current task: ${options.context.problem}\nUser memory: ${options.context.memory}`,
+                profile: `Current task: ${options.context.problem}`,
                 history: options.context.messages.map(
                   (m) => `${m.role}: ${m.text}`,
                 ),

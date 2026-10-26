@@ -11,19 +11,19 @@
   padding: 24px;
 }
 
-.avatar-bubble-view .observation-bubble {
+.avatar-bubble-view .agent-bubble {
   position: relative;
   right: auto;
   bottom: auto;
   width: max-content;
 }
 
-.avatar-bubble-view .observation-bubble.has-suggestion {
+.avatar-bubble-view .agent-bubble.has-suggestion {
   max-height: var(--bubble-max-height, 520px);
 }
 
 /* On Coco's right, the tail points left. */
-.avatar-bubble-view.is-right .observation-bubble-tail {
+.avatar-bubble-view.is-right .agent-bubble-tail {
   right: auto;
   left: -6px;
   transform: rotate(-135deg);

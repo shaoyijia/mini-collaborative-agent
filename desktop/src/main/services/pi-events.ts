@@ -1,5 +1,5 @@
 import type { AgentActivity } from '../../shared/agent-execution';
-import type { TutorToolCall } from '../../renderer/components/observation-types';
+import type { TutorToolCall } from '../../renderer/components/agent-types';
 import type { TutorStreamEvent } from './tutor-stream';
 
 /** Converts pi's multi-message turn into Coco's ordered activity + final reply. */

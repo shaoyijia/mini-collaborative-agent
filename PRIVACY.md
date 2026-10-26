@@ -1,88 +1,59 @@
 # Privacy
 
-Coco continuously observes your screen to offer proactive help, so we hold it to a strict standard: **everything runs on your machine, and we collect nothing.** The only data that ever leaves your computer is what goes to the VLM/LLM provider *you* configure — and you can keep even that on your trusted hardware.
-
-This document details, for each component, what data flows in and out, exactly what is sent to the model provider, and every file Coco writes to disk.
-
-
 ## Components: inputs and outputs
 
-Coco involves three local processes that talk to each other over `localhost`:
+Coco runs two local processes that talk to each other over `localhost`.
 
 ### Desktop app (Electron)
 
-The avatar and chat UI.
+The avatar, chat window, and the pi agent harness.
 
 | | |
 |---|---|
-| **Input** | Observation events streamed from the sensing service (SSE); guidance returned by the tutor service; your chat messages, feedback clicks, and settings. |
-| **Output** | Forwards observation text and your chat messages to the tutor service; writes settings, memory, and activity history to the local user-data folder (see [footprint](#on-disk-footprint)). |
-| **Network** | Loopback only. Clicking "Open ChatGPT / Claude / …" opens the tool with nothing attached — the generated prompt is only copied to your clipboard. The clipboard is written only when you click copy, and read only when you paste into Coco's chat. |
-
-### Sensing service (`lib/sensing`)
-
-The observer. Implements the Computer Use Behavior Observation Protocol.
-
-| | |
-|---|---|
-| **Input** | Screen frames (~5 fps, downscaled JPEGs with the cursor highlighted); mouse click/scroll events and key presses (used locally to segment activity into meaningful moments).|
-| **Output** | Calls the **observer VLM** when a trigger fires (periodic snapshot, idle/struggle detection, or your chat message) — see [What is sent to the VLM](#what-is-sent-to-the-vlm). Emits the resulting observation text to the desktop app over a local event stream. |
-| **Storage** | Screenshots are deleted the moment the observer has read them. Per-session action log in a local SQLite database (deleted with the session folder). |
+| **Input** | Your chat messages, pasted images, attached file paths, voice recordings, question-card answers, and settings. |
+| **Output** | Runs each agent turn through the tutor service. The agent's file and command tools act only on the working folder you choose for the conversation. That folder is a working directory, not a sandbox. Writes settings and conversations to the user-data folder (see [footprint](#on-disk-footprint)). |
+| **Network** | Loopback only, unless you connect a model provider directly through Pi. In that case the agent's model calls go straight to that provider. |
 
 ### Tutor service (`lib/proactive_tutor`)
 
-The helper. Diagnoses each observation and decides whether to offer a hint, nudge, or delegation prompt.
-
 | | |
 |---|---|
-| **Input** | Observation text from the sensing service (relayed by the desktop app), your chat messages, relevant propositions retrieved from local episodic memory, and your context settings (scenario, AI tools, memory). |
-| **Output** | Calls the **tutor LLM** with a *text-only* prompt — observation, conversation history, relevant retrieved propositions, and memory. Images are included **only** when you explicitly attach a screenshot (hotkey capture or paste into chat). Returns guidance text to the desktop app. Optional visualizations are rendered by locally executed, safety-checked code. |
+| **Input** | Requests from the desktop app: the conversation, your messages and images, and voice recordings to transcribe. |
+| **Output** | Calls the chat model you configured. Returns streamed replies and transcripts to the desktop app. |
+| **Wake word** | When voice activation is on, the desktop app streams microphone audio to a local [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) keyword spotter (`wake_word_worker.py`). That audio is processed in memory and is **never** sent to a model or written to disk. |
 
-## What is sent to the VLM
+## What is sent to the model provider
 
-This is the only place data leaves your machine. When the observer triggers, one API request goes to the model configured in your `.env`, containing:
+Each agent turn sends the following to the chat model in your settings:
 
-- **The screenshot(s)** — the pixels of your screen at that moment (plus any capture you flagged with the hotkey). This is the sensitive payload: whatever is visible on screen is in the image.
-- **Observation context** — the observer's own previous outputs, your Coco memory/problem statement, and conversation history when a chat session is active.
+- the conversation so far, the agent's instructions, and your name;
+- any images you pasted into the message;
+- the output of tools the agent ran, such as file contents it read or command output in your working folder.
 
-What is deliberately **not** in the request: your keystroke log, click coordinates, window titles, app names, filenames, or anything read from your filesystem. Raw input events are used only locally to decide *when* to observe.
+A voice message is sent to the same model to be transcribed. Only the recording you make after pressing the mic, or after saying the wake word, is sent.
 
-**We are not collecting any of this.** There is no Coco backend; the request goes directly from your machine to your provider's endpoint, authenticated with your own API key. That also means **your provider choice determines where your screen pixels go** — choose one whose data policies you trust, and prefer providers with no-training / zero-retention terms. Better yet, use one of the privacy-preserving setups:
-
-1. **Self-hosted VLMs** — run an open-weight model on hardware you control via [vLLM](https://github.com/vllm-project/vllm), [LM Studio](https://lmstudio.ai/), etc. Your screenshots never leave your machine (or your own infrastructure).
-2. **Trusted Execution Environment (TEE) providers** — open-weight models served from attested secure enclaves, e.g. [Tinfoil](https://tinfoil.sh/), so even the host cannot inspect your data.
-3. **[Unlinkable inference](https://openanonymity.ai/blog/unlinkable-inference/)** — relay requests to any model provider while stripping the link between you and your requests, e.g. [Open Anonymity](https://chat.openanonymity.ai/).
-
-All three are selected purely by the model-name prefix in `.env` — see [lib/external_api/README.md](lib/external_api/README.md). We are also working toward an on-device-native Coco that removes remote inference entirely.
+There is no Coco backend. Requests go directly from your machine to your provider's endpoint, authenticated with your own credentials. Your provider choice therefore determines where your messages go. For stronger guarantees, use a self-hosted model, a Trusted Execution Environment provider, or an unlinkable relay. See [lib/external_api/README.md](lib/external_api/README.md).
 
 ## On-disk footprint
 
-Everything Coco stores lives in the app's user-data folder — delete it and every trace of Coco is gone:
+Everything Coco stores lives in the app's user-data folder. Delete the folder and every trace of Coco is gone:
 
 - **macOS**: `~/Library/Application Support/coco`
 - **Windows**: `%APPDATA%\coco`
 - **Linux**: `$XDG_CONFIG_HOME/coco` or `~/.config/coco`
 
-| File | Format | Contents | Retention |
-|---|---|---|---|
-| `coco-profile.json` | JSON | Onboarding settings: scenario, your AI-tool list, custom observer prompt | Until you change or delete it |
-| `coco-memory.txt` | Plain text | Coco's long-term memory about you — free text you can view and edit in-app | Until you edit or clear it |
-| `activity-history.jsonl` | JSON Lines: observation summaries plus proactive-support engagement and revealed support content | Timeline shown in the activity view, including whether you opened an offered support and the content needed to revisit it | **Auto-pruned to 30 days** |
-| `chat-conversations.json` | JSON | Chat transcripts, including pasted images, shown by the chat panel's conversation-history button | Stored locally without an automatic conversation-count limit |
-| `memory/memory.db` | SQLite with FTS5 | Semantic observer outputs, GUM-style propositions inferred from them, and links to supporting observations. Queried locally to add relevant past context to tutor prompts. | Until you delete the database |
-| `custom_prompts/observer.txt` | Plain text | Your custom observer prompt, if you set one | Until you change it |
-| `coco-records/session_<ts>/` | Folder per session | See below | Until you delete the folder |
+| File | Contents |
+|---|---|
+| `coco-profile.json` | Onboarding settings: your name and whether the avatar is hidden |
+| `coco-model-config.json` | The chat models you configured |
+| `coco-model-credentials.json` | API keys you entered in the app (file mode `0600`) |
+| `chat-conversations.json` | Chat transcripts, including pasted images, shown in conversation history |
+| `pi/` | The agent harness's per-conversation session history and provider login |
+| `workspace/` | The default working folder for new conversations |
+| `wake-word.json`, `wake-word/` | Whether voice activation is on, and the keyword spotter's state |
+| `coco-records/session_<ts>/tutor_calls.jsonl` | One row per tutor-model call (prompt and reply), for debugging and research |
+| `logs/` | The wake-word worker's log |
 
-Each session folder under `coco-records/` contains:
+The tutor service writes its log next to the desktop app (`desktop/logs/tutor-server.log` when run from source). It can contain message text, so treat it like the records above.
 
-| File | Format | Contents | Retention |
-|---|---|---|---|
-| `actions.db` | SQLite, one table `observations` `(id, observer_name, content, content_type, created_at, updated_at)` | Raw action strings the segmenter uses — key presses, clicks, scrolls. **Local only, never sent to any model.** | Lives with the session folder |
-| `screenshots/` | JPEG | Rolling capture buffer | **Deleted as soon as the observer reads them** — nothing accumulates |
-| `hotkey_captures/` | JPEG | Screenshots you explicitly flagged with `Cmd+Shift+Space` | Until you remove them in-app or delete the folder |
-| `observations.jsonl` | JSON Lines | Observer inputs (text prompt) and outputs per call | Lives with the session folder |
-| `tutor_calls.jsonl` | JSON Lines | Tutor prompts and returned guidance | Lives with the session folder |
-| `feedback.jsonl` | JSON Lines | Your 👍/👎 reactions to suggestions | Lives with the session folder |
-| `observer_screenshots/` | JPEG | **Only if you opt in** with `COLLECT_TRAINING_SCREENSHOTS=1`: copies of the exact images sent to the VLM, kept for your own training use. Off by default. | Until you delete them |
-
-Service logs are written next to the desktop app (`desktop/logs/*.log`) for debugging; they can contain observation and guidance text, so treat them like the records above. Your API keys stay in the plaintext `.env` you created and are used only to authenticate with your chosen provider.
+API keys you put in a developer `.env` file stay in that file and are used only to authenticate with your chosen provider.

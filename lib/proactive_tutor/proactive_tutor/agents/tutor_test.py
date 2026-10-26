@@ -36,23 +36,33 @@ def _metrics(call_id: str, tokens: int = 5) -> dict:
     }
 
 
-def _memory_result() -> dict:
-    return {
-        "query": "roadmap",
-        "count": 1,
-        "results": [
-            {
-                "id": "memory-1",
-                "text": "The user is reviewing a roadmap in Notion",
-                "evidence": [
-                    {
-                        "id": "observation-1",
-                        "content": "Reviewing a roadmap in Notion",
-                    }
-                ],
-            }
-        ],
-    }
+class LookupProvider(ToolProvider):
+    """A stand-in tool provider that records the queries it receives."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def definitions(self) -> list[ToolDefinition]:
+        return [
+            ToolDefinition(
+                name="lookup",
+                description="Look up a note.",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                source="test_lookup",
+            )
+        ]
+
+    def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.queries.append(arguments["query"])
+        return {"count": 1, "results": ["The roadmap review is in Notion"]}
+
+    def instructions(self) -> str:
+        return "Use lookup only for note questions."
 
 
 def _tool_response(
@@ -82,113 +92,14 @@ def _text_response(text: str) -> LiteLLMMessage:
     )
 
 
-def test_tool_call_uses_memory_mcp(monkeypatch) -> None:
-    captured: dict = {}
-
-    async def fake_memory_mcp(**kwargs):
-        captured.update(kwargs)
-        return _memory_result()
-
-    monkeypatch.setattr(tutor_module, "call_get_user_context", fake_memory_mcp)
+def test_default_agent_has_no_screen_or_memory_tools() -> None:
     agent = TutorAgent("test-model", "system")
 
-    result = agent._execute_tool_call(
-        {
-            "name": "get_user_context",
-            "arguments": {
-                "query": "roadmap",
-                "start_hh_mm_ago": "02:00",
-                "end_hh_mm_ago": "00:15",
-                "limit": 3,
-                "evidence_limit": 1,
-            },
+    assert agent._tool_definitions() == []
+    for name in ("observe_screen", "get_user_context", "get_recent_observations"):
+        assert agent._execute_tool_call({"name": name, "arguments": {}}) == {
+            "error": f"tool is not available: {name}"
         }
-    )
-
-    assert result == _memory_result()
-    assert captured == {
-        "query": "roadmap",
-        "start_hh_mm_ago": "02:00",
-        "end_hh_mm_ago": "00:15",
-        "limit": 3,
-        "evidence_limit": 1,
-    }
-
-
-def test_tool_call_gets_recent_observations(monkeypatch) -> None:
-    captured: dict = {}
-    expected = {
-        "count": 1,
-        "observations": [{"id": "recent", "content": "Editing in Figma"}],
-    }
-
-    async def fake_recent_observations(**kwargs):
-        captured.update(kwargs)
-        return expected
-
-    monkeypatch.setattr(
-        tutor_module,
-        "call_get_recent_observations",
-        fake_recent_observations,
-    )
-    agent = TutorAgent("test-model", "system")
-
-    result = agent._execute_tool_call(
-        {
-            "name": "get_recent_observations",
-            "arguments": {
-                "limit": 5,
-                "start_hh_mm_ago": "01:00",
-                "session_id": "session-1",
-                "observation_type": "snapshot",
-            },
-        }
-    )
-
-    assert result == expected
-    assert captured == {
-        "limit": 5,
-        "start_hh_mm_ago": "01:00",
-        "session_id": "session-1",
-        "observation_type": "snapshot",
-    }
-
-
-def test_tool_call_observes_screen_only_when_requested(monkeypatch) -> None:
-    captured: dict = {}
-    expected = {
-        "observation": "A spreadsheet shows a #VALUE! error in cell D12.",
-        "llm_metrics": {"total_tokens": 42},
-    }
-
-    def fake_screen_observer(focus: str):
-        captured["focus"] = focus
-        return expected
-
-    monkeypatch.setattr(tutor_module, "_call_screen_observer", fake_screen_observer)
-    agent = TutorAgent("test-model", "system")
-
-    result = agent._execute_tool_call(
-        {
-            "name": "observe_screen",
-            "arguments": {"focus": "Identify the visible spreadsheet error"},
-        }
-    )
-
-    assert result == expected
-    assert captured == {"focus": "Identify the visible spreadsheet error"}
-
-
-def test_tool_rejects_non_mcp_tool_and_unexpected_arguments() -> None:
-    agent = TutorAgent("test-model", "system")
-
-    wrong_tool = agent._execute_tool_call({"name": "unknown_tool", "arguments": {}})
-    wrong_argument = agent._execute_tool_call(
-        {"name": "get_user_context", "arguments": {"path": "/tmp"}}
-    )
-
-    assert wrong_tool["error"] == "tool is not available: unknown_tool"
-    assert "unexpected arguments: path" in wrong_argument["error"]
 
 
 def test_tutor_accepts_a_provider_without_agent_changes() -> None:
@@ -237,13 +148,10 @@ def test_tutor_accepts_a_provider_without_agent_changes() -> None:
     )
 
 
-def test_tutor_executes_memory_mcp_and_synthesizes_answer(monkeypatch) -> None:
+def test_tutor_executes_tool_and_synthesizes_answer(monkeypatch) -> None:
     responses = iter(
         [
-            _tool_response(
-                "get_user_context",
-                {"query": "roadmap", "limit": 3, "evidence_limit": 1},
-            ),
+            _tool_response("lookup", {"query": "roadmap"}),
             _text_response(
                 "<guidance>The roadmap review appears to be your current "
                 "task.</guidance>"
@@ -252,34 +160,29 @@ def test_tutor_executes_memory_mcp_and_synthesizes_answer(monkeypatch) -> None:
     )
     calls: list[list[dict]] = []
 
-    async def fake_memory_mcp(**kwargs):
-        assert kwargs["query"] == "roadmap"
-        return _memory_result()
-
     def fake_completion(messages, **kwargs):
         calls.append([dict(message) for message in messages])
         return next(responses), _metrics(f"call-{len(calls)}")
 
-    monkeypatch.setattr(tutor_module, "call_get_user_context", fake_memory_mcp)
     monkeypatch.setattr(tutor_module, "chat_completion", fake_completion)
     monkeypatch.setattr(
         tutor_module,
         "_current_datetime_context",
         lambda: "<current_datetime>2026-07-23T12:34:56-07:00</current_datetime>",
     )
-    agent = TutorAgent("test-model", "base system")
+    agent = TutorAgent("test-model", "base system", tool_provider=LookupProvider())
 
     response, metrics = agent.tutor_with_metrics("current context")
 
     assert response.startswith("<guidance>The roadmap")
-    assert "get_user_context" in calls[0][0]["content"]
+    assert "Use lookup" in calls[0][0]["content"]
     assert "2026-07-23T12:34:56-07:00" in calls[0][0]["content"]
     assert calls[1][-1]["role"] == "tool"
-    assert "reviewing a roadmap in Notion" in calls[1][-1]["content"]
+    assert "roadmap review is in Notion" in calls[1][-1]["content"]
     assert metrics["total_tokens"] == 10
 
 
-def test_tutor_skips_tool_loop_when_disabled(monkeypatch) -> None:
+def test_tutor_skips_tool_loop_without_tools(monkeypatch) -> None:
     calls: list[list[dict]] = []
     completion_kwargs: list[dict] = []
 
@@ -294,12 +197,7 @@ def test_tutor_skips_tool_loop_when_disabled(monkeypatch) -> None:
         "_current_datetime_context",
         lambda: "<current_datetime>2026-07-23T12:34:56-07:00</current_datetime>",
     )
-    agent = TutorAgent(
-        "test-model",
-        "base system",
-        enable_memory_tool=False,
-        enable_screen_tool=False,
-    )
+    agent = TutorAgent("test-model", "base system")
 
     response, metrics = agent.tutor_with_metrics("context")
 
@@ -313,20 +211,10 @@ def test_tutor_skips_tool_loop_when_disabled(monkeypatch) -> None:
     assert metrics["call_id"] == "single-call"
 
 
-def test_chat_does_not_observe_screen_without_tool_call(monkeypatch) -> None:
-    def fail_if_called(_focus: str):
-        raise AssertionError("screen observer should not run")
-
+def test_chat_answers_directly_without_tool_call(monkeypatch) -> None:
     def fake_chat(messages, **kwargs):
-        return (
-            LiteLLMMessage(
-                role="assistant",
-                content=[TextContent(text="A direct answer needs no screen context.")],
-            ),
-            _metrics("chat-direct"),
-        )
+        return _text_response("Four."), _metrics("chat-direct")
 
-    monkeypatch.setattr(tutor_module, "_call_screen_observer", fail_if_called)
     monkeypatch.setattr(tutor_module, "chat_completion", fake_chat)
     agent = TutorAgent("test-model", "base system")
 
@@ -334,76 +222,33 @@ def test_chat_does_not_observe_screen_without_tool_call(monkeypatch) -> None:
         [{"role": "user", "content": "What is two plus two?"}]
     )
 
-    assert response == "A direct answer needs no screen context."
+    assert response == "Four."
     assert metrics["tool_calls"] == []
 
 
-def test_attached_screenshot_prompt_discourages_duplicate_capture(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    captured: dict = {}
-    image_path = tmp_path / "hotkey.png"
-    image_path.write_bytes(b"screenshot")
-
-    def fake_chat(messages, **kwargs):
-        captured["messages"] = messages
-        captured["tools"] = kwargs.get("tools")
-        return _text_response("I will use the attached screenshot."), _metrics(
-            "attached-image"
-        )
-
-    monkeypatch.setattr(tutor_module, "chat_completion", fake_chat)
-    agent = TutorAgent("test-model", "base system")
-
-    response, _ = agent.chat_with_metrics(
-        [{"role": "user", "content": "Help with this UI."}],
-        image_paths=[str(image_path)],
-    )
-
-    assert response == "I will use the attached screenshot."
-    system_prompt = captured["messages"][0]["content"]
-    assert (
-        "treat that image as the screen state the user deliberately chose"
-        in system_prompt
-    )
-    assert "do not call observe_screen" in system_prompt
-    tool_names = {tool["function"]["name"] for tool in captured["tools"]}
-    assert "observe_screen" in tool_names
-
-
-def test_chat_memory_tool_loop_keeps_exchange_as_separate_messages(
-    monkeypatch,
-) -> None:
+def test_chat_tool_loop_keeps_exchange_as_separate_messages(monkeypatch) -> None:
     responses = iter(
         [
-            _tool_response(
-                "get_user_context",
-                {"query": "roadmap", "limit": 3, "evidence_limit": 1},
-            ),
+            _tool_response("lookup", {"query": "roadmap"}),
             _text_response("The roadmap review appears to be your current task."),
         ]
     )
     calls: list[list[dict]] = []
 
-    async def fake_memory_mcp(**kwargs):
-        return _memory_result()
-
     def fake_chat(messages, **kwargs):
         calls.append([dict(message) for message in messages])
         return next(responses), _metrics(f"chat-{len(calls)}")
 
-    monkeypatch.setattr(tutor_module, "call_get_user_context", fake_memory_mcp)
     monkeypatch.setattr(tutor_module, "chat_completion", fake_chat)
     monkeypatch.setattr(
         tutor_module,
         "_current_datetime_context",
         lambda: "<current_datetime>2026-07-23T12:34:56-07:00</current_datetime>",
     )
-    agent = TutorAgent("test-model", "base system")
+    agent = TutorAgent("test-model", "base system", tool_provider=LookupProvider())
 
     response, metrics = agent.chat_with_metrics(
-        [{"role": "user", "content": "What was I working on?"}]
+        [{"role": "user", "content": "Where is my roadmap?"}]
     )
 
     assert response.startswith("The roadmap")
@@ -415,29 +260,20 @@ def test_chat_memory_tool_loop_keeps_exchange_as_separate_messages(
         "assistant",
         "tool",
     ]
-    assert "reviewing a roadmap in Notion" in calls[1][-1]["content"]
-    assert metrics["tool_calls"][0]["name"] == "get_user_context"
+    assert "roadmap review is in Notion" in calls[1][-1]["content"]
+    assert metrics["tool_calls"][0]["name"] == "lookup"
     assert metrics["tool_calls"][0]["result"]["count"] == 1
 
 
-def test_chat_streams_answer_and_emits_memory_tool_events(monkeypatch) -> None:
+def test_chat_streams_answer_and_emits_tool_events(monkeypatch) -> None:
     responses = [
-        (
-            _tool_response(
-                "get_user_context",
-                {"query": "roadmap", "limit": 3, "evidence_limit": 1},
-            ),
-            [],
-        ),
+        (_tool_response("lookup", {"query": "roadmap"}), []),
         (
             _text_response("The roadmap is the current task."),
             ["The roadmap ", "is the current task."],
         ),
     ]
     call_index = 0
-
-    async def fake_memory_mcp(**kwargs):
-        return _memory_result()
 
     def fake_chat(messages, **kwargs):
         nonlocal call_index
@@ -449,13 +285,12 @@ def test_chat_streams_answer_and_emits_memory_tool_events(monkeypatch) -> None:
                 on_chunk(chunk)
         return response, _metrics(f"chat-{call_index}")
 
-    monkeypatch.setattr(tutor_module, "call_get_user_context", fake_memory_mcp)
     monkeypatch.setattr(tutor_module, "chat_completion", fake_chat)
     events: list[dict] = []
-    agent = TutorAgent("test-model", "base system")
+    agent = TutorAgent("test-model", "base system", tool_provider=LookupProvider())
 
     response, _ = agent.chat_with_metrics(
-        [{"role": "user", "content": "What was I working on?"}],
+        [{"role": "user", "content": "Where is my roadmap?"}],
         on_event=events.append,
     )
 
@@ -475,37 +310,24 @@ def test_chat_streams_answer_and_emits_memory_tool_events(monkeypatch) -> None:
 
 def test_chat_allows_more_than_three_tool_calls(monkeypatch) -> None:
     tool_responses = [
-        _tool_response(
-            "get_user_context",
-            {
-                "query": f"context {index}",
-                "limit": 1,
-                "evidence_limit": 0,
-            },
-            call_id=f"call-{index}",
-        )
+        _tool_response("lookup", {"query": f"context {index}"}, call_id=f"call-{index}")
         for index in range(4)
     ]
     responses = iter(
         [*tool_responses, _text_response("Final answer after four retrievals.")]
     )
-    tool_queries: list[str] = []
-
-    async def fake_memory_mcp(**kwargs):
-        tool_queries.append(kwargs["query"])
-        return {"count": 0, "results": []}
+    provider = LookupProvider()
 
     def fake_chat(messages, **kwargs):
-        return next(responses), _metrics(f"chat-{len(tool_queries)}")
+        return next(responses), _metrics(f"chat-{len(provider.queries)}")
 
-    monkeypatch.setattr(tutor_module, "call_get_user_context", fake_memory_mcp)
     monkeypatch.setattr(tutor_module, "chat_completion", fake_chat)
-    agent = TutorAgent("test-model", "base system")
+    agent = TutorAgent("test-model", "base system", tool_provider=provider)
 
     response, metrics = agent.chat_with_metrics(
         [{"role": "user", "content": "Use all relevant context."}]
     )
 
     assert response == "Final answer after four retrievals."
-    assert tool_queries == [f"context {index}" for index in range(4)]
+    assert provider.queries == [f"context {index}" for index in range(4)]
     assert len(metrics["tool_calls"]) == 4

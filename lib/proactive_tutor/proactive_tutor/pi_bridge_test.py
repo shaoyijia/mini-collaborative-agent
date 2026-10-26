@@ -16,21 +16,17 @@ def bridge(monkeypatch):
         model="configured/model",
         prompt="Be helpful.",
         _tool_definitions=lambda: [
-            {"type": "function", "function": {"name": "observe_screen"}}
+            {"type": "function", "function": {"name": "lookup"}}
         ],
-        _execute_tool_call=lambda call: (
-            calls.append(call) or {"observation": "A spreadsheet"}
-        ),
+        _execute_tool_call=lambda call: calls.append(call) or {"result": "A note"},
     )
     tutor = SimpleNamespace(
         tutor_agent=agent,
         problem_statement="Current task",
-        memory="User memory",
         conversation_history=["Earlier suggestion"],
         _chat_messages=[],
         _user_name_context_block=lambda: "User",
         _ai_tools_context_block=lambda: "Tools",
-        _curriculum_context_block=lambda: "Curriculum",
     )
     app = FastAPI()
     app.include_router(pi_bridge.create_pi_router(lambda: tutor))
@@ -47,7 +43,7 @@ def test_bridge_requires_desktop_token(bridge):
         == 401
     )
     response = client.get("/agent/context", headers={"Authorization": "Bearer secret"})
-    assert response.json()["tools"][0]["function"]["name"] == "observe_screen"
+    assert response.json()["tools"][0]["function"]["name"] == "lookup"
 
 
 def test_bridge_uses_existing_tools_and_records_turn_for_other_coco_flows(bridge):
@@ -55,10 +51,10 @@ def test_bridge_uses_existing_tools_and_records_turn_for_other_coco_flows(bridge
     client.headers["Authorization"] = "Bearer secret"
     response = client.post(
         "/agent/tools/execute",
-        json={"name": "observe_screen", "arguments": {"focus": "error"}},
+        json={"name": "lookup", "arguments": {"query": "error"}},
     )
-    assert response.json()["observation"] == "A spreadsheet"
-    assert calls == [{"name": "observe_screen", "arguments": {"focus": "error"}}]
+    assert response.json()["result"] == "A note"
+    assert calls == [{"name": "lookup", "arguments": {"query": "error"}}]
     response = client.post("/agent/turn", json={"user_text": "Do it", "text": "Done"})
     assert response.json()["history_length"] == 3
     assert tutor._chat_messages[-1] == {"role": "assistant", "content": "Done"}

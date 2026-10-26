@@ -8,14 +8,12 @@ from proactive_tutor.tools.base import (
 )
 from proactive_tutor.tools.factory import build_tutor_tool_provider
 from proactive_tutor.tools.mcp import MCPServerConfig, MCPToolProvider
-from proactive_tutor.tools.native import NativeToolProvider
 
 __all__ = [
     "AppleCalendarProvider",
     "CompositeToolProvider",
     "MCPServerConfig",
     "MCPToolProvider",
-    "NativeToolProvider",
     "ToolDefinition",
     "ToolProvider",
     "build_tutor_tool_provider",

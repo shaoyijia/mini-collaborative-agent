@@ -54,10 +54,10 @@ export class WakeWordService {
       : [
           'run',
           '--package',
-          'sensing',
+          'proactive_tutor',
           'python',
           '-m',
-          'sensing.wake_word_worker',
+          'proactive_tutor.wake_word_worker',
           ...workerArgs,
         ];
 

@@ -4,12 +4,6 @@ import { readModelConfiguration } from './model-config-store';
 jest.mock('electron', () => ({ app: { getPath: () => '/mock-coco' } }));
 const config = {
   version: 1,
-  sensing: {
-    id: 'sensing',
-    label: 'Sensing',
-    provider: 'gemini',
-    model: 'gemini/vision',
-  },
   tutors: [
     {
       id: 'original',
@@ -22,7 +16,7 @@ const config = {
 };
 
 afterEach(() => jest.restoreAllMocks());
-it('migrates the Pi chat override while retaining sensing and the old suggestion model', () => {
+it('migrates the Pi chat override', () => {
   jest
     .spyOn(fs, 'readFileSync')
     .mockImplementation((file) =>
@@ -33,8 +27,6 @@ it('migrates the Pi chat override while retaining sensing and the old suggestion
       ),
     );
   const migrated = readModelConfiguration()!;
-  expect(migrated.sensing).toEqual(config.sensing);
-  expect(migrated.instantSuggestionModelId).toBe('original');
   expect(
     migrated.tutors.find((item) => item.id === migrated.defaultTutorId)?.model,
   ).toBe('pi/test/vendor/model');
@@ -47,11 +39,14 @@ it('ignores legacy overrides after unified configuration is saved', () => {
   expect(read).toHaveBeenCalledTimes(1);
 });
 
-it('reloads an explicitly disabled sensing selection', () => {
-  jest
-    .spyOn(fs, 'readFileSync')
-    .mockReturnValue(
-      JSON.stringify({ ...config, sensing: null, unifiedRouting: true }),
-    );
-  expect(readModelConfiguration()).toEqual({ ...config, sensing: null });
+it('drops a sensing model saved by an older version', () => {
+  jest.spyOn(fs, 'readFileSync').mockReturnValue(
+    JSON.stringify({
+      ...config,
+      sensing: { ...config.tutors[0], id: 'sensing' },
+      instantSuggestionModelId: 'original',
+      unifiedRouting: true,
+    }),
+  );
+  expect(readModelConfiguration()).toEqual(config);
 });

@@ -7,15 +7,12 @@ import {
 } from 'react';
 import '../App.css';
 import './AvatarBubbleView.css';
-import ObservationBubble, { type BubbleState } from './ObservationBubble';
+import AgentBubble, { type BubbleState } from './AgentBubble';
 
 /** Bubble interactions, handled by the avatar renderer that owns the bubble. */
 export type AvatarBubbleEvent =
-  | 'help'
   | 'dismiss'
   | 'view-conversation'
-  | 'chat'
-  | 'run'
   | 'enter'
   | 'leave';
 
@@ -26,7 +23,7 @@ const setPointerInside = (inside: boolean) =>
   window.electron?.ipcRenderer.sendMessage('avatar-bubble-pointer', { inside });
 
 /**
- * Coco's observation bubble, rendered in its own window beside the avatar.
+ * Coco's agent bubble, rendered in its own window beside the avatar.
  * Main sizes and places the window from the card size reported here, and
  * reveals it once a new bubble has been painted.
  */
@@ -68,7 +65,7 @@ export default function AvatarBubbleView() {
   // its content changes size.
   useLayoutEffect(() => {
     const card = shown
-      ? viewRef.current?.querySelector<HTMLElement>('.observation-bubble')
+      ? viewRef.current?.querySelector<HTMLElement>('.agent-bubble')
       : null;
     if (!card) return undefined;
     const report = () =>
@@ -109,13 +106,10 @@ export default function AvatarBubbleView() {
           : undefined
       }
     >
-      <ObservationBubble
+      <AgentBubble
         bubble={bubble}
-        onHelpMe={() => sendEvent('help')}
         onDismiss={() => sendEvent('dismiss')}
         onViewConversation={() => sendEvent('view-conversation')}
-        onChatAboutSuggestion={() => sendEvent('chat')}
-        onRunSuggestion={() => sendEvent('run')}
         onMouseEnter={() => {
           setPointerInside(true);
           sendEvent('enter');

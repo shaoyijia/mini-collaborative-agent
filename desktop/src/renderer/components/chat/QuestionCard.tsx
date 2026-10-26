@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { TutorToolCall } from '../observation-types';
+import type { TutorToolCall } from '../agent-types';
 import { TutorMessage } from './MessageContent';
 import './QuestionCard.css';
 

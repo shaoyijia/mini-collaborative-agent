@@ -23,17 +23,13 @@ export interface ModelConnection {
 
 export interface ModelConfiguration {
   version: 1;
-  sensing: ModelConnection | null;
   tutors: ModelConnection[];
   defaultTutorId: string;
-  instantSuggestionModelId?: string;
 }
 
 export interface ModelConfigurationInput {
-  sensing: ModelConnection | null;
   tutors: ModelConnection[];
   defaultTutorId: string;
-  instantSuggestionModelId?: string;
   credentials?: Record<string, string>;
 }
 
@@ -84,7 +80,9 @@ const configPath = () =>
 const credentialsPath = () =>
   path.join(app.getPath('userData'), 'coco-model-credentials.json');
 
-export const credentialId = (role: 'sensing' | 'tutor', provider: ProviderId) =>
+// Credentials are keyed by role so files written before sensing was removed
+// (which also held `sensing:<provider>` keys) keep working.
+export const credentialId = (role: 'tutor', provider: ProviderId) =>
   `${role}:${provider}`;
 
 function isProvider(value: unknown): value is ProviderId {
@@ -131,14 +129,11 @@ function normalizeConnection(value: unknown): ModelConnection | null {
 export function validateModelConfiguration(
   input: ModelConfigurationInput,
 ): ModelConfiguration {
-  const sensing = normalizeConnection(input?.sensing);
   const tutors = Array.isArray(input?.tutors)
     ? input.tutors
         .map(normalizeConnection)
         .filter((item): item is ModelConnection => item !== null)
     : [];
-  if (input?.sensing != null && !sensing)
-    throw new Error('A sensing provider and vision model are required.');
   if (tutors.length === 0) throw new Error('Add at least one tutor model.');
   if (new Set(tutors.map((item) => item.id)).size !== tutors.length) {
     throw new Error('Tutor model IDs must be unique.');
@@ -146,18 +141,8 @@ export function validateModelConfiguration(
   if (!tutors.some((item) => item.id === input.defaultTutorId)) {
     throw new Error('Choose a default tutor model.');
   }
-  if (
-    input.instantSuggestionModelId &&
-    !tutors.some((item) => item.id === input.instantSuggestionModelId)
-  ) {
-    throw new Error('Choose an available instant suggestion model.');
-  }
   return {
-    ...(input.instantSuggestionModelId
-      ? { instantSuggestionModelId: input.instantSuggestionModelId }
-      : {}),
     version: 1,
-    sensing,
     tutors,
     defaultTutorId: input.defaultTutorId,
   };
@@ -206,7 +191,6 @@ export function readModelConfiguration(): ModelConfiguration | null {
         );
         if (legacy.mode === 'native' && legacy.provider && legacy.model) {
           const id = 'legacy-pi-chat';
-          config.instantSuggestionModelId ??= config.defaultTutorId;
           config.tutors.push({
             id,
             label: `Pi · ${legacy.model}`,
@@ -229,12 +213,9 @@ export function getModelConfigurationView(): ModelConfigurationView | null {
   const config = readModelConfiguration();
   if (!config) return null;
   const credentials = readCredentials();
-  const ids = new Set<string>([
-    ...(config.sensing
-      ? [credentialId('sensing', config.sensing.provider)]
-      : []),
-    ...config.tutors.map((item) => credentialId('tutor', item.provider)),
-  ]);
+  const ids = new Set<string>(
+    config.tutors.map((item) => credentialId('tutor', item.provider)),
+  );
   return {
     ...config,
     credentialStatus: Object.fromEntries(
@@ -253,30 +234,18 @@ export function saveModelConfiguration(
     if (trimmed) credentials[id] = trimmed;
   });
 
-  const allowedCredentialIds = new Set([
-    ...(config.sensing
-      ? [credentialId('sensing', config.sensing.provider)]
-      : []),
-    ...config.tutors.map((item) => credentialId('tutor', item.provider)),
-  ]);
+  const allowedCredentialIds = new Set(
+    config.tutors.map((item) => credentialId('tutor', item.provider)),
+  );
   Object.keys(credentials).forEach((id) => {
     if (!allowedCredentialIds.has(id)) delete credentials[id];
   });
 
-  const required: Array<['sensing' | 'tutor', ProviderId]> = [
-    ...(config.sensing
-      ? [['sensing', config.sensing.provider] as ['sensing', ProviderId]]
-      : []),
-    ...config.tutors.map((item): ['tutor', ProviderId] => [
-      'tutor',
-      item.provider,
-    ]),
-  ];
-  required.forEach(([role, provider]) => {
+  config.tutors.forEach(({ provider }) => {
     const envName = PROVIDER_KEY_ENV[provider];
     if (
       PROVIDERS[provider].requiresKey &&
-      !credentials[credentialId(role, provider)] &&
+      !credentials[credentialId('tutor', provider)] &&
       !process.env[envName ?? '']
     ) {
       throw new Error(`${PROVIDERS[provider].label} requires an API key.`);
@@ -295,14 +264,13 @@ export function saveModelConfiguration(
 
 function connectionEnv(
   connection: ModelConnection,
-  role: 'sensing' | 'tutor',
   credentials: CredentialMap,
   fallbackEnv: NodeJS.ProcessEnv,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   const keyName = PROVIDER_KEY_ENV[connection.provider];
   const key =
-    credentials[credentialId(role, connection.provider)] ||
+    credentials[credentialId('tutor', connection.provider)] ||
     (keyName ? fallbackEnv[keyName] : undefined);
   if (keyName && key) env[keyName] = key;
   if (connection.provider === 'hosted_vllm' && connection.baseUrl) {
@@ -317,55 +285,37 @@ function connectionEnv(
   return env;
 }
 
-export function buildRoleModelEnvironments(
+export function buildTutorModelEnvironment(
   config: ModelConfiguration,
   credentials: CredentialMap,
   fallbackEnv: NodeJS.ProcessEnv = {},
-): { sensingEnv: Record<string, string>; tutorEnv: Record<string, string> } {
-  return {
-    sensingEnv: config.sensing
-      ? {
-          ...connectionEnv(config.sensing, 'sensing', credentials, fallbackEnv),
-          MEMORY_MODEL: config.sensing.model,
-        }
-      : {},
-    tutorEnv: Object.assign(
-      {
-        COCO_INSTANT_SUGGESTION_MODEL: config.tutors.find(
-          (item) =>
-            item.id ===
-            (config.instantSuggestionModelId || config.defaultTutorId),
-        )!.model,
-      },
-      ...config.tutors.map((item) =>
-        connectionEnv(item, 'tutor', credentials, fallbackEnv),
-      ),
+): Record<string, string> {
+  return Object.assign(
+    {},
+    ...config.tutors.map((item) =>
+      connectionEnv(item, credentials, fallbackEnv),
     ),
-  };
+  );
 }
 
 export function resolveModelRuntime(): {
   config: ModelConfiguration;
-  sensingEnv: Record<string, string>;
   tutorEnv: Record<string, string>;
 } | null {
   const config = readModelConfiguration();
   if (!config) return null;
-  const credentials = readCredentials();
-  const roleEnvironments = buildRoleModelEnvironments(
-    config,
-    credentials,
-    process.env,
-  );
   return {
     config,
-    ...roleEnvironments,
+    tutorEnv: buildTutorModelEnvironment(
+      config,
+      readCredentials(),
+      process.env,
+    ),
   };
 }
 
 export function prepareModelConnectionTest(
   connectionInput: ModelConnection,
-  role: 'sensing' | 'tutor',
   apiKey = '',
 ): { connection: ModelConnection; env: Record<string, string> } {
   const connection = normalizeConnection(connectionInput);
@@ -374,9 +324,9 @@ export function prepareModelConnectionTest(
   }
   const credentials = readCredentials();
   if (apiKey.trim()) {
-    credentials[credentialId(role, connection.provider)] = apiKey.trim();
+    credentials[credentialId('tutor', connection.provider)] = apiKey.trim();
   }
-  const env = connectionEnv(connection, role, credentials, process.env);
+  const env = connectionEnv(connection, credentials, process.env);
   const keyName = PROVIDER_KEY_ENV[connection.provider];
   if (
     PROVIDERS[connection.provider].requiresKey &&
@@ -399,16 +349,10 @@ export function defaultTutor(config: ModelConfiguration): ModelConnection {
   );
 }
 
-/** Managed absence is intentional; only unmanaged installs use legacy env IDs. */
-export function resolveModelIds(
+/** Managed configuration wins; only unmanaged installs use the legacy env ID. */
+export function resolveTutorModelId(
   config: ModelConfiguration | null,
   env: NodeJS.ProcessEnv = process.env,
-) {
-  return {
-    tutor: (config ? defaultTutor(config).model : env.TUTOR_MODEL || '').trim(),
-    observer: (config
-      ? (config.sensing?.model ?? '')
-      : env.OBSERVER_MODEL || ''
-    ).trim(),
-  };
+): string {
+  return (config ? defaultTutor(config).model : env.TUTOR_MODEL || '').trim();
 }

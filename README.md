@@ -2,59 +2,23 @@
   <img src="assets/github-logo.svg" width="40%">
 </p>
 
+**A minimal collaborative agent you can read end to end**
 
-**Proactive Co-Assistant Through Continuous Context Observation**
+This repo is a stripped-down fork of [Coco](https://github.com/collaborative-agents/coco), made for teaching. Coco is a desktop agent that you chat with by text or voice and that can work on files in a folder you pick. Full Coco also watches your screen so it can step in proactively and build a memory of you. This fork removes all of that: **there is no screen sensing, no memory, and no OS permission beyond the microphone.** What is left is small enough to show how a collaborative agent works:
 
-Coco quietly senses your computer-use context and steps in with the right help at the right moment — a nudge when you're stuck, a better AI tool to delegate to, or a hint to learn something yourself. Runs **fully on your machine** as a lightweight desktop app.
+1. **Two collaboration primitives.** The agent can *send the user a message* and *wait for the user to continue* ([Primitives](#1-two-primitives-from-co-gym)).
+2. **Two interfaces.** A desktop GUI (an avatar and a chat window) and voice (push-to-talk and a "Hey Coco" wake word) ([Interfaces](#2-interfaces-gui-and-voice)).
 
-## What it solves?
-Working with AI today puts most of the burden on the human: you have to notice when AI could help, know what to ask, and supply all the context yourself. Coco inverts that:
-
-- **Proactively identifies opportunities** — recognizes repetitive work and generates a ready-to-send prompt so you can delegate in one shot
-- **Accumulates context across apps** — infers your intent from browsing, reading, and editing history rather than waiting for you to explain it
-- **Helps you discover what you don't know** — surfaces concrete questions when you're struggling with unfamiliar territory, so you can ask the right things
-
-Coco is a *collaboration layer* that sits between you and the AI tools you already use. We keep it intentionally lightweight in order to decouple proactive co-assistance from the execution capabilities provided by various general and vertical agents.
-
-## Three ways to “Ask Coco”
-
-Besides receiving proactive support, you can ask Coco for help at any time:
-
-1. **Click the avatar or toolbar button** to open Coco and type your question.
-2. **Press Command + Shift + Space** to open Coco and attach a screenshot as visual context.
-3. **Say “Hey Coco”** for the lowest-friction, voice-first entry point. Voice activation must first be enabled in Settings.
-
-You can ask for help through text, voice, or visual context and get assistance instantly.
-
-## Demos
-
-**Automating repetitive work**
-
-![automating repetitive work demo video](assets/teaser_automating_repetitive_work.webp)
-
-> The user is skimming a paper's Related Work section to find datasets about proactive agents. Coco recognizes the repetitive lookup pattern and generates a detailed prompt the user can send to ChatGPT in one shot.
-
-**Summarizing browsing content based on inferred intent**
-
-![summarizing browsing content demo video](assets/teaser_browsing_summary.webp)
-
-> The user searches for a church in San Diego, checks travel time, and reads Yelp reviews. Coco infers a potential day-trip and surfaces a plan — no prompt needed.
-
-**Helping user to navigate unknown unknowns**
-
-![navigating unknown unknowns demo video](assets/teaser_searching_unknown_unknown.webp)
-
-> The user wants to run Nemotron-3-Nano-Omni locally but doesn't know what hardware specs matter. Coco senses the struggle and suggests concrete questions that are at the core of the space.
-
+> If you want to see how an agent can stay aware of what the user is doing and personalize its help (screen sensing, proactive suggestions, long-term memory), see the full Coco repo: **https://github.com/collaborative-agents/coco**.
 
 ## Quickstart
 
 ```bash
 # 1. Clone
-git clone https://github.com/collaborative-agents/coco.git
-cd coco
+git clone https://github.com/shaoyijia/mini-collaborative-agent.git
+cd mini-collaborative-agent
 
-# 2. Install packages for the Python services
+# 2. Install packages for the Python service
 uv sync
 
 # 3. Launch the desktop app
@@ -63,71 +27,97 @@ npm install
 npm start
 ```
 
+On first launch, onboarding asks for your name, whether to turn on voice activation, the chat model(s) to use, and where the avatar should live. Voice messages are transcribed by your chat model, so pick one that accepts audio input (for example a Gemini model) if you plan to talk to Coco.
 
-## How it works
+## How it's put together
 
-<p align="center">
-  <img src="assets/coco-overview-github.svg" width="100%">
-</p>
+```
+ ┌──────────────── Desktop app (Electron) ─────────────────┐
+ │  Avatar window  ·  Chat window  ·  Menu-bar / tray icon  │   GUI
+ │  Mic button  ·  "Hey Coco" wake-word listener            │   voice
+ │                                                          │
+ │  Pi agent harness (one runtime per conversation)         │
+ │   ├─ built-in tools: read / write / edit / bash          │
+ │   └─ ask_user_question tool  ◄── primitive 1             │
+ └───────────────▲──────────────────────────────────────────┘
+                 │ authenticated loopback HTTP
+ ┌───────────────┴──────── Tutor service (:8081) ───────────┐
+ │  lib/proactive_tutor: model gateway, context, voice      │
+ │  transcription, local wake-word worker                   │
+ └──────────────────────────────────────────────────────────┘
+```
 
-Coco continuously observes user actions and decides when to offer proactive suggestions using a VLM. It has three main components:
+- **Desktop app** (`desktop/`). It holds every user-facing surface and runs the agent loop with the [pi](https://github.com/earendil-works/pi) coding-agent SDK (`desktop/release/app/agent/`).
+- **Tutor service** (`lib/proactive_tutor`). A local FastAPI server. It routes the agent's model calls to whichever provider you configure (`lib/external_api`), builds the conversation context, transcribes voice messages, and hosts the wake-word worker. The package keeps its upstream name.
 
-- **Desktop app (Electron)** — the avatar that lives on your desktop. Assistance surfaces as a small bubble with minimal screen footprint.
-- **Sensing service (`:8080`)** — the observer. `lib/sensing` implements the Computer Use Behavior Observation Protocol, which specifies how behavioral signals from your desktop are captured, classified, and forwarded to downstream agents.
-- **Tutor service (`:8081`)** — the helper. `lib/proactive_tutor` implements the Tutor Agent, which diagnoses each observation and decides what to do — a hint, a nudge, or a delegation prompt — then returns the guidance shown in the bubble or chat.
+## 1. Two primitives for Human-Agent Collaboration
 
+[Collaborative Gym (Co-Gym)](https://github.com/SALT-NLP/collaborative-gym) ([paper](https://arxiv.org/abs/2412.15701)) models human–agent collaboration by giving the agent two actions beyond its task tools: **`SendTeammateMessage`**, which talks to the human, and **`WaitTeammateContinue`**, which hands control back to the human. This repo implements both.
+
+### Send the user a message
+
+The agent sends the user a message in two ways:
+
+- **Its reply text.** Every turn streams Markdown into the chat as the model writes it.
+- **The `ask_user_question` tool.** We turn on the [`rpiv-ask-user-question`](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question) pi plugin, so the agent can stop mid-task and ask one or more structured questions (multiple-choice, multi-select, or free text). The run is suspended until the user answers.
+
+### Wait for the user to continue
+
+When the agent finishes replying, its turn ends and control goes back to the user. The pi run resolves, `runAgentTurn` in `desktop/src/main/main.ts` emits `done`, and nothing more happens until the user sends a message, answers a question card, or speaks.
+
+The user also has these controls during and after a run:
+
+- **Stop** aborts the run in progress. Completed file changes are kept, and the agent is told never to claim stopped work was finished.
+- **Reply-ready reminder.** If the chat window is out of view, the avatar shows short progress notes while the run continues and a "Reply ready" bubble when it ends (`AgentProgressReminder`, `agent-reply-ready`).
+- **Resume.** Every conversation is saved locally and can be reopened and continued later.
+
+**This version cannot sense user activity.** While it waits, the agent sees nothing. If you want the agent to be aware of the user activity, derive useful user memory from computer use, and decide on its own when to step back in and can personalize its help, we need to add additional module to achieve this. See [collaborative-agents/coco](https://github.com/collaborative-agents/coco) for that design.
+
+## 2. Interfaces: GUI and voice
+
+### GUI
+
+- **Desktop avatar**. An always-on-top pet. Click it or use its ••• menu to open chat or settings. It is also where the agent's progress and reply-ready bubbles appear. You can hide it in Settings and use the menu-bar (macOS) or tray icon instead.
+- **Chat window**. This shows streamed replies, tool activity, question cards, and the Stop button. You can also pick the working folder for the conversation, switch models per conversation, view conversation history, and inspect the agent's context.
+- **Global shortcut.** `Cmd/Ctrl + Shift + Space` opens the chat from anywhere.
+
+### Voice
+
+- **Push-to-talk.** Click the mic in the composer.
+- **Wake word ("Coco", "Hi Coco", "Hey Coco").** This is off by default; turn it on in onboarding or Settings. On a detection, Coco opens the chat and starts push-to-talk recording. Wake-word audio never leaves your machine. Only the message you speak after the wake word is sent for transcription.
 
 ## Data & privacy
 
-Coco collects nothing — no telemetry, no analytics, no Coco servers. For a full breakdown of each component's inputs/outputs, the data-flow diagram, every file Coco writes to disk, and exactly what is sent to the VLM, see [PRIVACY.md](PRIVACY.md).
-
-### What stays on your machine
-
-
-Everything Coco stores about you (settings, activity history, session records) lives in the app's user-data folder:
+There is no telemetry and no Coco server. The only data that leaves your machine is what you send to the model provider you configure, which is your messages, attached images and files, and recorded voice messages. Everything else stays in the app's user-data folder. See [PRIVACY.md](PRIVACY.md) for the details.
 
 - **macOS**: `~/Library/Application Support/coco`
-- **Windows**: `%APPDATA%\coco` (e.g. `C:\Users\<you>\AppData\Roaming\coco`)
+- **Windows**: `%APPDATA%\coco`
 - **Linux**: `$XDG_CONFIG_HOME/coco` or `~/.config/coco`
-
-Screenshots are deleted the moment the observer has read them, so nothing accumulates on disk. If you want to save the screenshots for potential training purposes, set `COLLECT_TRAINING_SCREENSHOTS=1` in `.env`, and they'll be copied into the records folder before deletion (disk-heavy — enable it deliberately).
-
-### VLM Calls
-
-While Coco application is fully local, the observer involves the VLM call: it sends **screenshots of your screen** to whichever VLM you select, so your provider choice determines where those pixels go. We are working on making Coco on-device naitive. Right now, we recommend:
-- Self-hosted VLMs, e.g., via [vLLM](https://github.com/vllm-project/vllm), [LM Studio](https://lmstudio.ai/)
-- Trusted Execution Environment (TEE) providers — open-weight models hosted on attested secure hardware, e.g. [Tinfoil](https://tinfoil.sh/)
-- [Unlinkable inference](https://openanonymity.ai/blog/unlinkable-inference/) — relays requests to any model provider while adding confidentiality, e.g. [Open Anonymity](https://chat.openanonymity.ai/)
-
-See [lib/external_api/README.md](lib/external_api/README.md) for model provider configuration.
-
 
 ## Acknowledgement
 
-We thank Long Lin for designing the avatar. The screen-capture and observation-storage core builds on the [GUM (General User Models) project](https://github.com/GeneralUserModels/gum). The execution agent builts on [pi](https://github.com/earendil-works/pi) which is an amazing open-source agent harness.
-
+This repo is derived from [Coco](https://github.com/collaborative-agents/coco). We thank Long Lin for designing the avatar. The execution agent builds on [pi](https://github.com/earendil-works/pi), an excellent open-source agent harness. The collaboration primitives follow [Collaborative Gym](https://github.com/SALT-NLP/collaborative-gym).
 
 ## Citation
 
-If you find Coco useful in your research or work, please consider citing it:
+If you use this code, please cite Coco and Co-Gym:
 
 ```bibtex
 @software{coco2026,
   title        = {Coco: Proactive Co-Assistant Through Continuous Context Observation},
-  author       = {Shao, Yijia and Wang, Yihan, Wang, Haowen, and Yang, Diyi},
+  author       = {Shao, Yijia and Wang, Yihan and Wang, Haowen and Yang, Diyi},
   year         = {2026},
-  url          = {https://github.com/collaborative-agents/coco},
-  note         = {Proactive co-assistant that senses computer-use context and offers timely help, running fully on-device.}
+  url          = {https://github.com/collaborative-agents/coco}
+}
+
+@article{shao2024collaborative,
+  title   = {Collaborative Gym: A Framework for Enabling and Evaluating Human-Agent Collaboration},
+  author  = {Shao, Yijia and Samuel, Vinay and Jiang, Yucheng and Yang, John and Yang, Diyi},
+  journal = {arXiv preprint arXiv:2412.15701},
+  year    = {2024}
 }
 ```
 
-
-## Contact
-
-Coco is under active development — we'd love to hear from you.
-
-Whether you've found a bug, have a feature idea, or want to collaborate, reach out at [`shaoyj@stanford.edu`](mailto:shaoyj@stanford.edu).
-
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).

@@ -2,10 +2,9 @@
  * @NOTE: Prepend a `~` to css file paths that are in your node_modules
  *        See https://github.com/webpack-contrib/sass-loader#imports
  */
-/* The avatar window is resized dynamically by main.ts to fit whatever is on
-   stage (just the pet, or the history panel too). The stage is a transparent
-   flex row with the pet anchored bottom-right. The observation bubble is
-   drawn in its own window (see AvatarBubbleView.css). */
+/* The avatar window holds just the pet. The stage is a transparent flex row
+   with the pet anchored bottom-right. The agent bubble is drawn in its own
+   window (see AvatarBubbleView.css). */
 .pet-stage {
   width: 100%;
   height: 100%;
@@ -54,7 +53,7 @@
   background: rgba(31, 41, 55, 0.9);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
   color: var(--coco-color-surface);
-  font: 500 var(--coco-text-caption)/1.2 var(--coco-font-family);
+  font: 500 var(--coco-text-caption) / 1.2 var(--coco-font-family);
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
@@ -75,11 +74,11 @@
   transition-delay: 0ms;
 }
 
-/* ── Observation thought-bubble ────────────────────────────────────────── */
+/* ── Agent bubble ──────────────────────────────────────────────────────── */
 
 /* Status palette — accent color overridden per .status-* modifier. */
-.observation-bubble {
-  --bubble-accent: #6366f1;       /* indigo, default / observing */
+.agent-bubble {
+  --bubble-accent: #6366f1; /* indigo, default / observing */
   --bubble-accent-soft: rgba(99, 102, 241, 0.18);
   position: absolute;
   bottom: 24px;
@@ -98,10 +97,12 @@
   opacity: 0;
   transform: translateY(4px) scale(0.96);
   animation: obs-pop-in 320ms cubic-bezier(0.21, 1.02, 0.46, 1) forwards;
-  transition: opacity 400ms ease, transform 400ms ease;
+  transition:
+    opacity 400ms ease,
+    transform 400ms ease;
 }
 
-.observation-bubble-header {
+.agent-bubble-header {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -127,37 +128,37 @@
   color: var(--coco-color-text-secondary);
 }
 
-.observation-bubble.status-progress {
-  --bubble-accent: var(--coco-color-success);        /* green */
-  --bubble-accent-soft: rgba(22, 163, 74, 0.20);
+.agent-bubble.status-progress {
+  --bubble-accent: var(--coco-color-success); /* green */
+  --bubble-accent-soft: rgba(22, 163, 74, 0.2);
 }
-.observation-bubble.status-stuck {
-  --bubble-accent: #f97316;        /* orange */
+.agent-bubble.status-stuck {
+  --bubble-accent: #f97316; /* orange */
   --bubble-accent-soft: rgba(249, 115, 22, 0.22);
 }
-.observation-bubble.status-mistake {
-  --bubble-accent: #eab308;        /* amber */
+.agent-bubble.status-mistake {
+  --bubble-accent: #eab308; /* amber */
   --bubble-accent-soft: rgba(234, 179, 8, 0.25);
 }
-.observation-bubble.status-inefficient {
-  --bubble-accent: #0ea5e9;        /* sky */
+.agent-bubble.status-inefficient {
+  --bubble-accent: #0ea5e9; /* sky */
   --bubble-accent-soft: rgba(14, 165, 233, 0.22);
 }
-.observation-bubble.status-ai_struggle {
-  --bubble-accent: #a855f7;        /* purple */
+.agent-bubble.status-ai_struggle {
+  --bubble-accent: #a855f7; /* purple */
   --bubble-accent-soft: rgba(168, 85, 247, 0.22);
 }
-.observation-bubble.status-observing {
-  --bubble-accent: #6366f1;        /* indigo */
+.agent-bubble.status-observing {
+  --bubble-accent: #6366f1; /* indigo */
   --bubble-accent-soft: rgba(99, 102, 241, 0.18);
 }
 
-.observation-bubble.is-leaving {
+.agent-bubble.is-leaving {
   opacity: 0;
   transform: translateY(2px) scale(0.98);
 }
 
-.observation-bubble-label {
+.agent-bubble-label {
   font-size: var(--coco-text-caption);
   font-weight: 700;
   line-height: 1.35;
@@ -174,7 +175,7 @@
 }
 
 /* Centered on the label's first line, however many lines it wraps to. */
-.observation-bubble-label::before {
+.agent-bubble-label::before {
   content: '';
   flex-shrink: 0;
   width: 6px;
@@ -186,7 +187,7 @@
   animation: obs-dot-pulse 1.4s ease-in-out infinite;
 }
 
-.observation-bubble-text {
+.agent-bubble-text {
   font-size: var(--coco-text-control);
   line-height: var(--coco-leading-body);
   color: var(--coco-color-text);
@@ -195,13 +196,13 @@
   overflow-wrap: break-word;
 }
 
-.observation-bubble-text.is-expanded {
+.agent-bubble-text.is-expanded {
   max-height: 240px;
   overflow-y: auto;
 }
 
 /* Tier 3: tutor message preview — line-clamped to 3 lines */
-.observation-bubble-tutor-preview {
+.agent-bubble-tutor-preview {
   font-size: var(--coco-text-secondary);
   color: var(--coco-color-text-secondary);
   line-height: 1.4;
@@ -212,146 +213,12 @@
 }
 
 /* Tier 3 bubble is slightly wider to fit the message preview comfortably */
-.observation-bubble.is-tier3 {
+.agent-bubble.is-tier3 {
   max-width: 240px;
 }
 
-/* Revealed instant suggestion: wider bubble + scrollable, ready-to-copy body. */
-.observation-bubble.has-suggestion {
-  max-width: 320px;
-  max-height: calc(100vh - 48px);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.observation-suggestion-body {
-  margin-top: var(--coco-space-1);
-  flex: 1 1 180px;
-  min-height: 72px;
-  max-height: 240px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font-size: var(--coco-text-secondary);
-  line-height: var(--coco-leading-body);
-  color: var(--coco-color-text);
-  padding: var(--coco-space-2) 10px;
-  border-radius: var(--coco-radius-control);
-  background: rgba(0, 0, 0, 0.04);
-  border: 1px solid var(--bubble-accent-soft);
-  -webkit-app-region: no-drag;
-  user-select: text;
-}
-
-.bubble-framework-overview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--coco-space-2);
-  min-height: 0;
-  overflow-y: auto;
-  color: var(--coco-color-text-secondary);
-  font-size: var(--coco-text-caption);
-  line-height: 1.4;
-}
-
-.bubble-framework-heading {
-  color: var(--coco-color-text);
-  font-size: var(--coco-text-control);
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.bubble-why-line {
-  color: var(--coco-color-text);
-  font-size: var(--coco-text-control);
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-.bubble-why-line--lead {
-  font-weight: 700;
-}
-
-.bubble-framework-concept {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: var(--coco-space-2);
-}
-
-.bubble-framework-term {
-  color: var(--bubble-accent);
-  font-weight: 700;
-}
-
-/* Thumbs (on the action page), page bars, then the arrow at the far right.
-   The row is laid out in order so a wide arrow can't cover the bars. */
-.bubble-framework-pager {
-  min-height: 30px;
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-2);
-  flex-shrink: 0;
-}
-
-.bubble-framework-page-bars {
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-1);
-  margin-right: auto;
-}
-
-.bubble-framework-page-bar {
-  width: 10px;
-  height: 3px;
-  border-radius: 999px;
-  background: #c7cad5;
-  transition: width 0.15s ease, background 0.15s ease;
-}
-
-.bubble-framework-page-bar.is-active {
-  width: 24px;
-  background: var(--bubble-accent);
-}
-
-.bubble-framework-arrow {
-  height: 28px;
-  padding: 0 var(--coco-space-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--coco-radius-card);
-  background: var(--bubble-accent-soft);
-  color: var(--bubble-accent);
-  font-size: var(--coco-text-caption);
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.65;
-  -webkit-app-region: no-drag;
-}
-
-.bubble-framework-arrow:hover {
-  opacity: 1;
-}
-
-/* Transient confirmation after Copy / Approve. */
-.observation-bubble-toast {
-  margin-top: var(--coco-space-2);
-  padding: 6px 10px;
-  font-size: var(--coco-text-caption);
-  font-weight: 600;
-  text-align: center;
-  border-radius: var(--coco-radius-control);
-  color: var(--coco-color-surface);
-  background: var(--bubble-accent);
-}
-
-/* Action buttons inside the bubble (Tier 2 "Help me with this" /
-   Tier 3 "View conversation"). Styled to match the bubble's accent color
-   so they feel native rather than injected. */
+/* Action button inside the bubble ("View reply"). Styled to match the
+   bubble's accent color so it feels native rather than injected. */
 .bubble-action-btn {
   display: block;
   width: 100%;
@@ -368,7 +235,9 @@
   cursor: pointer;
   text-align: center;
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
   -webkit-app-region: no-drag;
 }
 
@@ -382,58 +251,8 @@
   cursor: default;
 }
 
-/* Delegate suggestion: one "Copy prompt" button plus an Open button per the
-   user's available chatbots/agents. Wrap them into a tidy grid. */
-.bubble-tool-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bubble-tool-actions .bubble-action-btn {
-  width: auto;
-  flex: 1 1 auto;
-  margin-top: var(--coco-space-2);
-}
-
-/* Open-a-tool buttons read as the primary action (filled), Copy prompt stays
-   outlined as the secondary. */
-.bubble-tool-btn {
-  background: var(--bubble-accent-soft);
-}
-
-.bubble-metrics-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--coco-space-1);
-  margin-top: 6px;
-  color: var(--coco-color-text-muted);
-  font-size: var(--coco-text-caption);
-}
-
-.bubble-metrics-row span {
-  border: 1px solid var(--bubble-accent-soft);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
-  padding: 1px 5px;
-  line-height: 1.35;
-}
-
-/* Thumbs up/down under a revealed suggestion. The chosen thumb stays
-   highlighted; the opposite choice remains available for corrections. */
-.bubble-feedback-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--coco-space-1);
-  margin-top: 6px;
-}
-
-.bubble-pager-rating {
-  display: flex;
-}
-
 /* Tail pointing toward the pet (right side). Inherits parent's accent border. */
-.observation-bubble-tail {
+.agent-bubble-tail {
   position: absolute;
   right: -6px;
   bottom: 22px;
@@ -446,48 +265,7 @@
   border-top-right-radius: 2px;
 }
 
-/* Subtle ring that pulses around the pet when a new observation lands.
-   Color shifts to match the status so a glance at the pet conveys mood. */
-.pet-pulse-ring {
-  position: absolute;
-  bottom: 18px;
-  right: 18px;
-  width: 138px;
-  height: 138px;
-  border-radius: 50%;
-  border: 2px solid rgba(99, 102, 241, 0.45);
-  pointer-events: none;
-  animation: obs-ring-pulse 1s ease-out forwards;
-}
-.pet-pulse-ring.pulse-progress    { border-color: rgba(22, 163, 74, 0.55); }
-.pet-pulse-ring.pulse-stuck       { border-color: rgba(249, 115, 22, 0.65); }
-.pet-pulse-ring.pulse-mistake     { border-color: rgba(234, 179, 8, 0.65); }
-.pet-pulse-ring.pulse-inefficient { border-color: rgba(14, 165, 233, 0.55); }
-.pet-pulse-ring.pulse-ai_struggle { border-color: rgba(168, 85, 247, 0.55); }
-.pet-pulse-ring.pulse-observing   { border-color: rgba(99, 102, 241, 0.45); }
-
-@keyframes obs-pop-in {
-  0% {
-    opacity: 0;
-    transform: translateY(4px) scale(0.94);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes obs-dot-pulse {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
-}
-
-@keyframes obs-ring-pulse {
-  0% { opacity: 0.7; transform: scale(0.9); }
-  100% { opacity: 0; transform: scale(1.18); }
-}
-
-/* ── Observation-history pill button ────────────────────────────────────────
+/* ── ••• menu trigger ──────────────────────────────────────────────────────
    Appears on hover and anchors the compact material menu above the pet. */
 
 .pet-actions-trigger {
@@ -502,13 +280,16 @@
   border-radius: var(--coco-radius-control);
   background: transparent;
   color: rgba(55, 65, 81, 0.82);
-  font: 700 var(--coco-text-control)/20px var(--coco-font-family);
+  font: 700 var(--coco-text-control) / 20px var(--coco-font-family);
   letter-spacing: 1px;
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
   transform: scale(0.96);
-  transition: opacity 160ms ease, background 140ms ease, transform 160ms ease;
+  transition:
+    opacity 160ms ease,
+    background 140ms ease,
+    transform 160ms ease;
   -webkit-app-region: no-drag;
 }
 
@@ -539,7 +320,9 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .pet-actions-trigger { color: rgba(255, 255, 255, 0.78); }
+  .pet-actions-trigger {
+    color: rgba(255, 255, 255, 0.78);
+  }
 
   .pet-actions-trigger:hover,
   .pet-actions-trigger:focus-visible,
@@ -547,1145 +330,4 @@
     background: rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.96);
   }
-}
-
-/* ── Observation-history floating panel ─────────────────────────────────────
-   Drawn in its own window to the left of the pet, in the same zone as the
-   bubble (see AvatarHistoryView.css).                                       */
-
-.obs-history-panel {
-  position: absolute;
-  bottom: 24px;
-  right: 168px;        /* flush left of the 150px pet + 12px padding + 6px gap */
-  width: 252px;
-  max-height: 480px;
-  display: flex;
-  flex-direction: column;
-  background: var(--coco-color-surface);
-  border: 1px solid rgba(99, 102, 241, 0.18);
-  border-radius: var(--coco-radius-card);
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.08),
-    0 12px 32px rgba(31, 41, 55, 0.18);
-  font-family: var(--coco-font-family);
-  -webkit-app-region: no-drag;
-  pointer-events: auto;
-  z-index: 10;
-  animation: obs-pop-in 260ms cubic-bezier(0.21, 1.02, 0.46, 1) forwards;
-  overflow: hidden;
-}
-
-.obs-history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 10px var(--coco-space-2) 13px;
-  border-bottom: 1px solid #f0f1f6;
-  flex-shrink: 0;
-}
-
-.obs-history-title {
-  font-size: var(--coco-text-caption);
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #6366f1;
-}
-
-.obs-history-close {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: #f0f1f4;
-  color: var(--coco-color-text-muted);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background 0.12s ease;
-  flex-shrink: 0;
-}
-
-.obs-history-close:hover {
-  background: #e2e4ea;
-  color: var(--coco-color-text-secondary);
-}
-
-.obs-history-empty {
-  font-size: var(--coco-text-caption);
-  color: var(--coco-color-text-subtle);
-  text-align: center;
-  padding: 20px 14px;
-  margin: 0;
-}
-
-.obs-history-list {
-  list-style: none;
-  margin: 0;
-  padding: 2px 0 var(--coco-space-1);
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-/* Subtle scrollbar */
-.obs-history-list::-webkit-scrollbar { width: 4px; }
-.obs-history-list::-webkit-scrollbar-track { background: transparent; }
-.obs-history-list::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.18);
-  border-radius: 4px;
-}
-
-.obs-history-entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: var(--coco-space-2) var(--coco-space-3) var(--coco-space-2) 13px;
-}
-
-.obs-history-entry + .obs-history-entry {
-  border-top: 1px solid var(--coco-color-surface-muted);
-}
-
-/* Status dot */
-.obs-history-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-top: 5px;
-}
-
-/* Lane colors — single source shared by history dots, count dots, and the
-   flow timeline. Amber (not red) for focus moments: stuck/mistake are normal,
-   not failures. Mirrors LANE_COLOR in observation-types.ts. */
-.obs-lane--flow     { background: #22c55e; }  /* green  */
-.obs-lane--watching { background: #94a3b8; }  /* gray   */
-.obs-lane--focus    { background: #f59e0b; }  /* amber  */
-.obs-lane--assist   { background: #6366f1; }  /* violet */
-
-/* Lane-tinted text (e.g. the "flow %" stat). */
-.obs-lane-text--flow { color: var(--coco-color-success); }
-
-/* ── 14-day contribution strip ──────────────────────────────────────────── */
-.obs-strip {
-  display: flex;
-  gap: 3px;
-  padding: 10px 13px 6px;
-  flex-shrink: 0;
-}
-
-.obs-strip-cell {
-  flex: 1;
-  height: 18px;
-  border-radius: 3px;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  background: #eceef3;
-  transition: outline 0.1s ease, transform 0.1s ease;
-}
-
-.obs-strip-cell:hover { transform: translateY(-1px); }
-
-/* Flow-intensity fill, lightest → darkest green. */
-.obs-level--0 { background: #eceef3; }
-.obs-level--1 { background: #c6e9d0; }
-.obs-level--2 { background: #86d3a0; }
-.obs-level--3 { background: #46b76e; }
-.obs-level--4 { background: #1f9e52; }
-
-.obs-strip-cell.is-today { box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.45); }
-.obs-strip-cell.is-selected { outline: 2px solid #6366f1; outline-offset: 1px; }
-
-/* ── Selected-day summary ──────────────────────────────────────────────── */
-.obs-summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--coco-space-2);
-  padding: var(--coco-space-1) 13px 6px;
-  flex-shrink: 0;
-}
-
-.obs-summary-day {
-  font-size: var(--coco-text-secondary);
-  font-weight: 700;
-  color: var(--coco-color-text);
-}
-
-.obs-summary-stat {
-  font-size: var(--coco-text-caption);
-  color: var(--coco-color-text-muted);
-}
-
-.obs-summary-stat.obs-lane-text--flow { font-weight: 700; }
-
-.obs-summary-counts {
-  display: flex;
-  gap: 14px;
-  padding: 6px 13px var(--coco-space-2);
-  border-bottom: 1px solid #f0f1f6;
-  flex-shrink: 0;
-}
-
-.obs-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--coco-text-caption);
-  color: var(--coco-color-text-muted);
-}
-
-.obs-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-/* ── Flow timeline ─────────────────────────────────────────────────────── */
-.obs-timeline {
-  padding: 2px 13px 6px;
-  flex-shrink: 0;
-}
-
-.obs-timeline-track {
-  position: relative;
-  height: 14px;
-  border-radius: 4px;
-  background: #f1f2f6;
-  overflow: hidden;
-}
-
-.obs-timeline-seg {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 2px;
-}
-
-.obs-timeline-axis {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--coco-text-caption);
-  color: #b0b5c3;
-  margin-top: 3px;
-}
-
-.obs-timeline--empty {
-  font-size: var(--coco-text-caption);
-  color: #b0b5c3;
-  text-align: center;
-  padding: var(--coco-space-2) 0 10px;
-}
-
-.obs-history-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.obs-history-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 1px;
-}
-
-.obs-history-label {
-  font-size: var(--coco-text-caption);
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #6366f1;
-  flex-shrink: 0;
-}
-
-.obs-support-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin: 2px 0 3px;
-  color: var(--coco-color-text-muted);
-  font-size: var(--coco-text-caption);
-  font-weight: 600;
-}
-
-.obs-support-controls {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.obs-support-view {
-  border: 1px solid var(--coco-color-border);
-  background: var(--coco-color-surface-subtle);
-  color: var(--coco-color-text-muted);
-  font: inherit;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-.obs-support-view {
-  border-radius: 999px;
-  padding: 1px 7px;
-  font-size: var(--coco-text-caption);
-  line-height: var(--coco-leading-body);
-}
-
-.obs-support-view:hover {
-  border-color: #c7d2fe;
-  background: #eef2ff;
-}
-
-.obs-history-time {
-  font-size: var(--coco-text-caption);
-  color: #b0b5c3;
-  flex-shrink: 0;
-}
-
-.obs-history-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--coco-space-1);
-  margin: 2px 0 var(--coco-space-1);
-  font-size: var(--coco-text-caption);
-  color: var(--coco-color-text-muted);
-}
-
-.obs-history-metrics span {
-  border: 1px solid var(--coco-color-border);
-  border-radius: 6px;
-  background: var(--coco-color-surface-subtle);
-  padding: 1px 5px;
-  line-height: 1.35;
-}
-
-.obs-history-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--coco-space-1);
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  -webkit-app-region: no-drag;
-}
-
-.obs-history-row:hover .obs-history-text {
-  color: var(--coco-color-text);
-}
-
-.obs-history-text {
-  font-size: var(--coco-text-secondary);
-  line-height: var(--coco-leading-body);
-  color: #4f4f4f;
-  font-family: var(--coco-font-family);
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  /* Collapsed: 2-line clamp */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.obs-history-text.is-open {
-  display: block;
-  -webkit-line-clamp: unset;
-  overflow: visible;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-
-.obs-history-chevron {
-  flex-shrink: 0;
-  font-size: var(--coco-text-body);
-  color: #c4c8d6;
-  line-height: var(--coco-leading-body);
-  transition: transform 0.15s ease, color 0.12s;
-  display: inline-block;
-  margin-top: 1px;
-}
-
-.obs-history-row:hover .obs-history-chevron {
-  color: #6366f1;
-}
-
-.obs-history-chevron.is-open {
-  transform: rotate(90deg);
-  color: #6366f1;
-}
-
-.obs-support-content {
-  margin-top: 5px;
-  padding: var(--coco-space-2) 9px;
-  border: 1px solid #dbeafe;
-  border-radius: var(--coco-radius-control);
-  background: #f8faff;
-  color: var(--coco-color-text-secondary);
-  font-size: var(--coco-text-caption);
-  line-height: var(--coco-leading-body);
-  overflow-wrap: anywhere;
-}
-
-.obs-support-content strong {
-  display: block;
-  margin-bottom: 3px;
-  color: #4338ca;
-  font-size: var(--coco-text-caption);
-}
-
-.obs-support-content p {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.obs-support-content--conversation {
-  color: #6366f1;
-  font-style: italic;
-}
-
-.obs-support-content--conversation button {
-  margin-top: 5px;
-  border: none;
-  background: transparent;
-  color: #4f46e5;
-  padding: 0;
-  font: inherit;
-  font-style: normal;
-  font-weight: 700;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-/* ── Toast notification (top-right, screen-pinned) ─────────────────────────── */
-
-.notification-root {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  background: transparent;
-  /* Keep rounded corners and the drop shadow inside the transparent Electron
-     window. Previously all spare width was on the left, so the right edge was
-     flush with—and visibly clipped by—the BrowserWindow boundary. */
-  padding: var(--coco-space-2);
-}
-
-.toast-card {
-  width: 100%;
-  /* Fill the notification BrowserWindow's vertical space so the footer
-     button stays pinned at the bottom regardless of body content height. */
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--coco-color-surface);
-  border-radius: var(--coco-radius-card);
-  /* Keep the shadow within .notification-root's 8px padding so the window
-     edge never clips it into a hard line. */
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.14);
-  /* Match SessionChatView exactly. PT Sans is the product font; the system
-     fallbacks keep every window consistent if the web font is unavailable. */
-  font-family: var(--coco-font-family);
-  overflow: hidden;
-}
-
-/* Electron form controls otherwise retain their native UI font instead of
-   inheriting the typeface used by the surrounding notification. */
-.toast-card button,
-.toast-card input,
-.toast-card textarea,
-.toast-card select {
-  font-family: inherit;
-}
-
-/* Header row: brand label + close button */
-.toast-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px var(--coco-space-3) var(--coco-space-2) 14px;
-  border-bottom: 1px solid #f1f3f4;
-  cursor: move;
-  -webkit-app-region: drag;
-}
-
-.toast-brand {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.toast-brand-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--coco-color-primary);
-  flex-shrink: 0;
-}
-
-.toast-brand-name {
-  font-size: var(--coco-text-caption);
-  font-weight: 600;
-  color: var(--coco-color-text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.toast-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-1);
-  -webkit-app-region: no-drag;
-}
-
-/* Close (×) button – fully inside the card */
-.toast-window-control,
-.toast-close {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: none;
-  background: #f0f1f4;
-  color: var(--coco-color-text-muted);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  transition: background 0.12s ease;
-}
-
-.toast-window-control:hover,
-.toast-close:hover {
-  background: #e2e4ea;
-  color: var(--coco-color-text-secondary);
-}
-
-/* Message body — flex:1 so it absorbs leftover height in the toast-card,
-   min-height:0 so it can shrink below content size and scroll instead of
-   pushing the footer (and its action button) out of view. */
-.toast-body {
-  padding: 10px 14px var(--coco-space-1);
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.toast-message {
-  /* Match the app's standard chat, input, and button body text. */
-  font-size: var(--coco-text-body);
-  color: var(--coco-color-text);
-  line-height: var(--coco-leading-body);
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: break-word;
-  margin: 0;
-}
-
-/* Markdown rendering inside the toast — let the parent flex container size
-   it, scroll when overflowing. No fixed max-height: the footer is pinned by
-   flex layout, so any extra body height becomes scroll, not clipped UI. */
-.toast-markdown {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.toast-markdown p {
-  margin: 0 0 6px;
-}
-.toast-markdown p:last-child { margin-bottom: 0; }
-
-.toast-markdown ul,
-.toast-markdown ol {
-  margin: var(--coco-space-1) 0 6px;
-  padding-left: 18px;
-}
-
-.toast-markdown li { margin: 2px 0; }
-
-.toast-markdown strong { font-weight: 600; color: var(--coco-color-text); }
-.toast-markdown em { font-style: italic; }
-
-.toast-markdown code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--coco-text-secondary);
-  background: var(--coco-color-surface-muted);
-  border-radius: 4px;
-  padding: 0 var(--coco-space-1);
-  color: var(--coco-color-primary-hover);
-}
-
-.toast-markdown pre {
-  background: var(--coco-color-surface-muted);
-  border-radius: 6px;
-  padding: 6px var(--coco-space-2);
-  font-size: var(--coco-text-caption);
-  overflow-x: auto;
-  margin: var(--coco-space-1) 0 6px;
-}
-.toast-markdown pre code {
-  background: transparent;
-  padding: 0;
-  color: var(--coco-color-text);
-}
-
-.toast-markdown h1,
-.toast-markdown h2,
-.toast-markdown h3,
-.toast-markdown h4 {
-  font-size: var(--coco-text-body);
-  font-weight: 600;
-  margin: 6px 0 var(--coco-space-1);
-  color: var(--coco-color-text);
-}
-
-.toast-markdown a {
-  color: var(--coco-color-primary);
-  text-decoration: none;
-}
-.toast-markdown a:hover { text-decoration: underline; }
-
-.toast-markdown blockquote {
-  border-left: 3px solid var(--coco-color-accent-border);
-  margin: var(--coco-space-1) 0;
-  padding: 2px 0 2px var(--coco-space-2);
-  color: var(--coco-color-text-secondary);
-}
-
-/* Compact card variant — for short prompts (session-start/end) so the white
-   card hugs the content instead of stretching to the full window height.
-   The notification window stays the same size; the transparent area outside
-   the card is simply invisible. */
-.toast-card--compact {
-  height: auto;
-}
-
-.toast-card--compact .toast-body {
-  flex: 0 0 auto;
-}
-
-/* Hidden-avatar suggestion preview: a compact, clearly labeled title card.
-   The BrowserWindow can stay large enough for the revealed content; the unused
-   transparent area is invisible until the full suggestion is opened. */
-.toast-card--suggestion-preview {
-  height: auto;
-}
-
-.toast-card--suggestion-preview .toast-body {
-  flex: 0 0 auto;
-  padding-top: 9px;
-}
-
-/* AI-upskilling suggestion pages size the window to their content; the body
-   scrolls only once the window reaches its maximum height. */
-.toast-card--fit {
-  height: auto;
-  max-height: 100%;
-}
-
-.toast-card--fit .toast-body {
-  flex: 0 1 auto;
-  overflow-y: auto;
-}
-
-/* The action page of an AI-upskilling suggestion. */
-.toast-card--suggestion-action .toast-message {
-  font-size: var(--coco-text-control);
-  line-height: var(--coco-leading-body);
-}
-
-.toast-card--suggestion-preview .toast-message {
-  color: var(--coco-color-text);
-  font-size: var(--coco-text-body);
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.toast-suggestion-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: var(--coco-space-1);
-  color: var(--coco-color-primary);
-  font-size: var(--coco-text-caption);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-/* Two-page 4D explainer shown before an AI-upskilling suggestion. */
-.toast-framework-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  color: var(--coco-color-text);
-}
-
-.toast-framework-eyebrow {
-  color: var(--coco-color-primary);
-  font-size: var(--coco-text-caption);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.toast-framework-heading {
-  color: var(--coco-color-text);
-  font-size: var(--coco-text-control);
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-/* The explanation page: short sentences in the title's size, the first bold. */
-.toast-why-line {
-  color: var(--coco-color-text);
-  font-size: var(--coco-text-control);
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-.toast-why-line--lead {
-  font-weight: 700;
-}
-
-.toast-framework-concept {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 7px;
-  color: var(--coco-color-text-secondary);
-  font-size: var(--coco-text-caption);
-  line-height: 1.35;
-}
-
-.toast-framework-term {
-  color: var(--coco-color-primary);
-  font-weight: 700;
-}
-
-.toast-card--framework-overview > .toast-footer {
-  display: none;
-}
-
-/* Same order as the bubble's pager, so the arrow can't cover the bars. */
-.toast-framework-pager {
-  min-height: 34px;
-  padding: 2px 14px 10px;
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-2);
-}
-
-.toast-framework-page-bars {
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-1);
-  margin-right: auto;
-}
-
-.toast-framework-page-bar {
-  width: 10px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--coco-color-accent-border);
-  transition: width 0.15s ease, background 0.15s ease;
-}
-
-.toast-framework-page-bar.is-active {
-  width: 24px;
-  background: var(--coco-color-primary);
-}
-
-.toast-framework-arrow {
-  height: 28px;
-  padding: 0 var(--coco-space-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--coco-radius-card);
-  background: rgba(var(--coco-color-primary-rgb), 0.1);
-  color: var(--coco-color-primary);
-  font-size: var(--coco-text-caption);
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.toast-framework-arrow:hover {
-  background: rgba(var(--coco-color-primary-rgb), 0.18);
-  color: var(--coco-color-primary);
-}
-
-/* Action button row */
-.toast-footer {
-  padding: var(--coco-space-2) 14px var(--coco-space-3);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.toast-action {
-  padding: 5px var(--coco-space-3);
-  font-size: var(--coco-text-control);
-  font-weight: 600;
-  border-radius: var(--coco-radius-control);
-  border: 1px solid var(--coco-color-primary);
-  background: var(--coco-color-primary);
-  color: var(--coco-color-surface);
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.toast-action:hover {
-  background: var(--coco-color-primary-hover);
-  border-color: var(--coco-color-primary-hover);
-}
-
-.toast-action:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-/* Two-button footer for proactive prompts */
-.toast-footer-prompt {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--coco-space-2);
-  padding: var(--coco-space-2) 14px var(--coco-space-3);
-}
-
-.toast-tool-actions {
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.toast-tool-action {
-  color: var(--coco-color-primary);
-  border-color: var(--coco-color-accent-border);
-  background: var(--coco-color-accent-soft);
-}
-
-.toast-chat-action,
-.bubble-chat-action {
-  color: var(--coco-color-primary-hover);
-  border-color: var(--coco-color-accent-border);
-  background: var(--coco-color-accent-soft);
-}
-
-.toast-tool-action:hover,
-.toast-chat-action:hover {
-  color: var(--coco-color-primary-hover);
-  border-color: var(--coco-color-accent-border);
-  background: rgba(var(--coco-color-primary-rgb), 0.12);
-}
-
-/* Thumbs up/down (RatingButtons), shared by the pop-up, pet bubble, chat and
-   History. Outlined grey until chosen; the chosen thumb is filled navy. */
-.coco-rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.coco-rating-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--coco-color-text-subtle);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-  -webkit-app-region: no-drag;
-}
-
-.coco-rating-btn:hover {
-  color: var(--coco-color-primary);
-  background: var(--coco-color-accent-soft);
-}
-
-.coco-rating-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--coco-focus-ring);
-}
-
-.coco-rating-btn.is-selected {
-  color: var(--coco-color-primary);
-  background: var(--coco-color-accent-soft);
-  cursor: default;
-}
-
-.toast-footer-rating,
-.toast-pager-rating {
-  display: flex;
-}
-
-.coco-rating--compact .coco-rating-btn {
-  width: 24px;
-  height: 24px;
-}
-
-.toast-cancel {
-  padding: 5px var(--coco-space-3);
-  font-size: var(--coco-text-secondary);
-  font-weight: 500;
-  border-radius: var(--coco-radius-control);
-  border: 1px solid var(--coco-color-border);
-  background: transparent;
-  color: var(--coco-color-text-muted);
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.toast-cancel:hover {
-  background: var(--coco-color-surface-muted);
-}
-
-/* ── Session-rating floating window ─────────────────────────────────────────
-   Follows the evaluation_platform design language:
-   Uses the shared Coco primary, accent surface, typography, and control shape.
-   ────────────────────────────────────────────────────────────────────────── */
-
-.rating-root {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-}
-
-.rating-card {
-  width: 100%;
-  height: auto;
-  display: flex;
-  flex-direction: column;
-  background: var(--coco-color-surface);
-  border-radius: var(--coco-radius-card);
-  border: 1px solid #e0e0e0;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(32, 74, 121, 0.10);
-  font-family: var(--coco-font-family);
-  overflow: hidden;
-}
-
-.rating-header {
-  display: flex;
-  align-items: center;
-  gap: var(--coco-space-2);
-  padding: var(--coco-space-3) var(--coco-space-4) 11px;
-  border-bottom: 1px solid #e0e0e0;
-  flex-shrink: 0;
-}
-
-.rating-header-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--coco-color-primary);
-  flex-shrink: 0;
-}
-
-.rating-header-title {
-  font-size: var(--coco-text-caption);
-  font-weight: 700;
-  color: var(--coco-color-primary);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.rating-close {
-  margin-left: auto;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid #e0e0e0;
-  background: transparent;
-  color: #4f4f4f;
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.rating-close:hover {
-  background: var(--coco-color-accent-soft);
-  border-color: var(--coco-color-accent-border);
-  color: var(--coco-color-primary);
-}
-
-.rating-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 18px;
-}
-
-.rating-block + .rating-block {
-  border-top: 1px solid #e0e0e0;
-}
-
-.rating-question {
-  font-size: var(--coco-text-body);
-  color: rgba(0, 0, 0, 0.87);
-  line-height: var(--coco-leading-body);
-  font-weight: 700;
-}
-
-.rating-scale {
-  display: flex;
-  justify-content: space-between;
-  gap: 5px;
-  font-family: var(--coco-font-family);
-}
-
-.rating-option {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  background: var(--coco-color-surface);
-  border: 1px solid #e0e0e0;
-  border-radius: var(--coco-radius-control);
-  padding: var(--coco-space-2) var(--coco-space-1);
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.rating-option:hover {
-  background: var(--coco-color-accent-soft);
-  border-color: var(--coco-color-accent-border);
-}
-
-.rating-option--selected {
-  background: var(--coco-color-accent-soft);
-  border-color: var(--coco-color-primary);
-}
-
-.rating-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #F8F8F8;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--coco-text-control);
-  font-weight: 700;
-  color: #4f4f4f;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.rating-option--selected .rating-circle {
-  background: var(--coco-color-primary);
-  color: var(--coco-color-surface);
-}
-
-.rating-option-label {
-  font-size: var(--coco-text-caption);
-  color: #4f4f4f;
-  text-align: center;
-  line-height: 1.3;
-  white-space: pre-line;
-}
-
-.rating-option--selected .rating-option-label {
-  color: var(--coco-color-primary);
-  font-weight: 700;
-}
-
-.rating-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--coco-space-2);
-  padding: 11px 18px 14px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.rating-btn-skip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 20px;
-  border-radius: 999px;
-  border: 2px solid var(--coco-color-primary);
-  background: var(--coco-color-surface);
-  color: var(--coco-color-primary);
-  font-size: var(--coco-text-control);
-  font-weight: 600;
-  font-family: var(--coco-font-family);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.rating-btn-skip:hover {
-  background: var(--coco-color-primary);
-  color: var(--coco-color-surface);
-}
-
-.rating-btn-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 20px;
-  border-radius: 999px;
-  border: none;
-  background: var(--coco-color-primary);
-  color: var(--coco-color-surface);
-  font-size: var(--coco-text-control);
-  font-weight: 600;
-  font-family: var(--coco-font-family);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.rating-btn-submit:hover:not(:disabled) {
-  background: #1a3d66;
-}
-
-.rating-btn-submit:disabled {
-  background: var(--coco-color-accent-border);
-  color: var(--coco-color-surface);
-  cursor: not-allowed;
 }

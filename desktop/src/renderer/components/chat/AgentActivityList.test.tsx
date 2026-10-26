@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render } from '@testing-library/react';
 import AgentActivityList, { groupActivity } from './AgentActivityList';
-import type { TutorToolCall } from '../observation-types';
+import type { TutorToolCall } from '../agent-types';
 
 const call = (
   id: string,
@@ -53,7 +53,9 @@ test('collapses consecutive calls and makes failures visible in the summary', ()
   actions.forEach((action) => {
     expect(action.open).toBe(false);
     expect(action.querySelector('summary')).toHaveTextContent('bash');
-    expect(action.querySelector('summary')).not.toHaveTextContent('Run a script');
+    expect(action.querySelector('summary')).not.toHaveTextContent(
+      'Run a script',
+    );
   });
   fireEvent.click(group.querySelector('summary')!);
   expect(group).toHaveAttribute('open');

@@ -12,8 +12,9 @@ ROOT = Path(SPEC).resolve().parents[2]
 TUTOR_ENTRY = (
     ROOT / "lib" / "proactive_tutor" / "proactive_tutor" / "packaged_entrypoint.py"
 )
-SENSING_ENTRY = ROOT / "lib" / "sensing" / "sensing" / "sensing_server.py"
-WAKE_WORD_ENTRY = ROOT / "lib" / "sensing" / "sensing" / "wake_word_worker.py"
+WAKE_WORD_ENTRY = (
+    ROOT / "lib" / "proactive_tutor" / "proactive_tutor" / "wake_word_worker.py"
+)
 
 COMMON_HIDDEN_IMPORTS = [
     # uvicorn internals
@@ -43,63 +44,16 @@ COMMON_HIDDEN_IMPORTS = [
 
 TUTOR_HIDDEN_IMPORTS = COMMON_HIDDEN_IMPORTS + [
     "proactive_tutor",
-    "memory",
-    "memory_mcp.server",
 ]
 
 if platform.system() == "Darwin":
     TUTOR_HIDDEN_IMPORTS += ["EventKit", "Foundation", "objc"]
 
-SENSING_HIDDEN_IMPORTS = COMMON_HIDDEN_IMPORTS + [
-    # async DB / cache
-    "aiosqlite",
-    "greenlet",
-    "redis",
-    "redis.asyncio",
-    "redis.asyncio.client",
-    # workspace and image processing packages
-    "sensing",
-    "numpy",
-    "PIL",
-    "shapely",
-    "mss",
-]
-
 WAKE_WORD_HIDDEN_IMPORTS = [
-    "sensing",
     "numpy",
     "sherpa_onnx",
     "sherpa_onnx.lib._sherpa_onnx",
 ]
-
-if platform.system() == "Darwin":
-    SENSING_HIDDEN_IMPORTS += [
-        "Quartz",
-        "objc",
-        "pynput",
-        "pynput.keyboard",
-        "pynput.mouse",
-        "pynput.keyboard._darwin",
-        "pynput.mouse._darwin",
-    ]
-elif platform.system() == "Windows":
-    SENSING_HIDDEN_IMPORTS += [
-        "pynput",
-        "pynput.keyboard",
-        "pynput.mouse",
-        "pynput.keyboard._win32",
-        "pynput.mouse._win32",
-        "ctypes",
-        "ctypes.wintypes",
-    ]
-elif platform.system() == "Linux":
-    SENSING_HIDDEN_IMPORTS += [
-        "pynput",
-        "pynput.keyboard",
-        "pynput.mouse",
-        "pynput.keyboard._xorg",
-        "pynput.mouse._xorg",
-    ]
 
 tutor_datas = collect_data_files("proactive_tutor")
 tutor_datas += collect_data_files("litellm")
@@ -107,11 +61,7 @@ tutor_datas += collect_data_files("litellm")
 tutor_datas += copy_metadata("litellm")
 tutor_datas += copy_metadata("mcp")
 
-sensing_datas = collect_data_files("sensing")
-sensing_datas += collect_data_files("litellm")
-
-wake_word_datas = collect_data_files("sensing")
-wake_word_datas += collect_data_files("sherpa_onnx")
+wake_word_datas = collect_data_files("sherpa_onnx")
 
 tutor = Analysis(
     [str(TUTOR_ENTRY)],
@@ -123,20 +73,6 @@ tutor = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    noarchive=False,
-    optimize=0,
-)
-
-sensing = Analysis(
-    [str(SENSING_ENTRY)],
-    pathex=[str(ROOT)],
-    binaries=collect_dynamic_libs("shapely"),
-    datas=sensing_datas,
-    hiddenimports=SENSING_HIDDEN_IMPORTS,
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=["pandas"],
     noarchive=False,
     optimize=0,
 )
@@ -156,7 +92,6 @@ wake_word = Analysis(
 )
 
 tutor_pyz = PYZ(tutor.pure)
-sensing_pyz = PYZ(sensing.pure)
 wake_word_pyz = PYZ(wake_word.pure)
 
 tutor_exe = EXE(
@@ -165,24 +100,6 @@ tutor_exe = EXE(
     [],
     exclude_binaries=True,
     name="tutor-server",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
-
-sensing_exe = EXE(
-    sensing_pyz,
-    sensing.scripts,
-    [],
-    exclude_binaries=True,
-    name="sensing-server",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -214,16 +131,13 @@ wake_word_exe = EXE(
 )
 
 # A single COLLECT gives both executables one shared _internal directory. Files
-# with the same destination (Python, LiteLLM, Pillow, NumPy, and so on) are
+# with the same destination (Python, NumPy, and so on) are
 # collected only once.
 bundle = COLLECT(
     tutor_exe,
-    sensing_exe,
     wake_word_exe,
     tutor.binaries,
     tutor.datas,
-    sensing.binaries,
-    sensing.datas,
     wake_word.binaries,
     wake_word.datas,
     strip=False,

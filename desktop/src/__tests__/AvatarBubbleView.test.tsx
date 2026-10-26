@@ -22,11 +22,10 @@ const setup = () => {
 };
 
 const stuckBubble = {
-  status: 'stuck',
-  phrase: 'Been on this for a bit',
+  kind: 'working',
+  text: 'Been on this for a bit',
+  target: { sessionId: 'session', requestId: 'request' },
   fadingOut: false,
-  showHelpButton: true,
-  observationId: 'obs-1',
 };
 
 describe('AvatarBubbleView', () => {
@@ -43,8 +42,11 @@ describe('AvatarBubbleView', () => {
   it('sends clicks to the avatar renderer', () => {
     const { sendMessage, showBubble } = setup();
     showBubble(stuckBubble);
-    fireEvent.click(screen.getByRole('button', { name: 'Help me with this' }));
-    expect(sendMessage).toHaveBeenCalledWith('avatar-bubble-event', 'help');
+    fireEvent.click(screen.getByRole('button', { name: 'View progress →' }));
+    expect(sendMessage).toHaveBeenCalledWith(
+      'avatar-bubble-event',
+      'view-conversation',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(sendMessage).toHaveBeenCalledWith('avatar-bubble-event', 'dismiss');
   });
@@ -52,7 +54,7 @@ describe('AvatarBubbleView', () => {
   it('catches the mouse only while it is over the card', () => {
     const { sendMessage, container, showBubble } = setup();
     showBubble(stuckBubble);
-    const card = container.querySelector('.observation-bubble')!;
+    const card = container.querySelector('.agent-bubble')!;
     fireEvent.mouseEnter(card);
     expect(sendMessage).toHaveBeenCalledWith('avatar-bubble-pointer', {
       inside: true,
@@ -77,7 +79,7 @@ describe('AvatarBubbleView', () => {
     );
   });
 
-  it('limits a tall suggestion to the height main allows', () => {
+  it('limits a tall bubble to the height main allows', () => {
     const { container, showBubble } = setup();
     showBubble(stuckBubble, 480);
     expect(

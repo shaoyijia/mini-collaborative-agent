@@ -23,7 +23,7 @@ const reply = {
     {
       type: 'toolCall',
       id: 'call-1',
-      name: 'memory',
+      name: 'lookup',
       arguments: { query: 'task' },
     },
   ],
@@ -37,7 +37,7 @@ const request = {
     {
       role: 'user',
       content: [
-        { type: 'text', text: 'What is on screen?' },
+        { type: 'text', text: 'What is in this image?' },
         { type: 'image_url', image_url: { url: 'data:image/png;base64,YQ==' } },
       ],
     },
@@ -45,7 +45,7 @@ const request = {
   tools: [
     {
       type: 'function',
-      function: { name: 'memory', parameters: { type: 'object' } },
+      function: { name: 'lookup', parameters: { type: 'object' } },
     },
   ],
 };
@@ -68,7 +68,7 @@ test('stateless inference forwards images and tools, returns usage and preserves
         data: 'YQ==',
         mimeType: 'image/png',
       });
-      assert.equal(context.tools[0].name, 'memory');
+      assert.equal(context.tools[0].name, 'lookup');
       assert.equal(options.maxTokens, 123);
       return reply;
     }),
@@ -84,12 +84,12 @@ test('stateless inference forwards images and tools, returns usage and preserves
     [
       ...request.messages,
       result.message,
-      { role: 'tool', tool_call_id: 'call-1', content: 'Relevant memory' },
+      { role: 'tool', tool_call_id: 'call-1', content: 'Relevant reference' },
     ],
     model,
   );
   assert.equal(context.messages[1], reply);
-  assert.equal(context.messages[2].toolName, 'memory');
+  assert.equal(context.messages[2].toolName, 'lookup');
   assert.equal(context.messages[2].role, 'toolResult');
 });
 

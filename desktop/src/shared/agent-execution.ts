@@ -1,4 +1,4 @@
-import type { TutorToolCall } from '../renderer/components/observation-types';
+import type { TutorToolCall } from '../renderer/components/agent-types';
 
 export type AgentActivity =
   | { kind: 'message'; text: string }

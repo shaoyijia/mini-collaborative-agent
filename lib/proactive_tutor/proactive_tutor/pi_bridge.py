@@ -42,7 +42,6 @@ class SessionRequest(BaseModel):
     problem: str = ""
     user_name: str = ""
     ai_tools: list[str] = Field(default_factory=list)
-    memory: str = ""
     messages: list[dict[str, str]] = Field(default_factory=list)
 
 
@@ -80,9 +79,7 @@ def create_pi_router(get_tutor: Callable[[], TutorSystem | None]) -> APIRouter:
                 [
                     tutor._user_name_context_block(),
                     tutor._ai_tools_context_block(),
-                    tutor._curriculum_context_block(),
                     f"Current task: {tutor.problem_statement}",
-                    f"User memory: {tutor.memory}",
                 ]
             ),
             "history": tutor.conversation_history,
@@ -101,7 +98,6 @@ def create_pi_router(get_tutor: Callable[[], TutorSystem | None]) -> APIRouter:
         tutor = TutorSystem(req.model, req.scenario)
         tutor.problem_statement = req.problem
         tutor.user_name = req.user_name
-        tutor.memory = req.memory
         tutor.set_ai_tools(req.ai_tools)
         tutor.restore_conversation(req.messages)
         sessions[session_id] = tutor

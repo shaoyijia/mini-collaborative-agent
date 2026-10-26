@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Awaitable, Callable
-from typing import Any
 
 from proactive_tutor.tools.apple_calendar import AppleCalendarProvider
 from proactive_tutor.tools.base import CompositeToolProvider, ToolProvider
 from proactive_tutor.tools.mcp import MCPServerConfig, MCPToolProvider
-from proactive_tutor.tools.native import NativeToolProvider
 
 _GOOGLE_CALENDAR_READ_TOOLS = (
     "list-calendars",
@@ -76,25 +73,9 @@ def _google_calendar_provider() -> MCPToolProvider:
     )
 
 
-def build_tutor_tool_provider(
-    *,
-    enable_memory: bool,
-    enable_screen: bool,
-    enable_calendars: bool,
-    screen_observer: Callable[[str], dict[str, Any]],
-    get_user_context: Callable[..., Awaitable[dict[str, Any]]],
-    get_recent_observations: Callable[..., Awaitable[dict[str, Any]]],
-) -> ToolProvider:
+def build_tutor_tool_provider(*, enable_calendars: bool) -> ToolProvider:
     """Build the effective tool surface for one TutorAgent instance."""
-    providers: list[ToolProvider] = [
-        NativeToolProvider(
-            enable_memory=enable_memory,
-            enable_screen=enable_screen,
-            screen_observer=screen_observer,
-            get_user_context=get_user_context,
-            get_recent_observations=get_recent_observations,
-        )
-    ]
+    providers: list[ToolProvider] = []
     if enable_calendars and _env_enabled("COCO_APPLE_CALENDAR_ENABLED", True):
         providers.append(AppleCalendarProvider())
     if enable_calendars and _env_enabled("COCO_GOOGLE_CALENDAR_ENABLED", True):

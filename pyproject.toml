@@ -1,18 +1,15 @@
 [project]
 name = "coco"
 version = "0.1.0"
-description = "Coco — a proactive desktop agent that senses user activity and offers timely suggestions."
+description = "Mini collaborative agent — a desktop chat agent with GUI and voice interfaces, built on Coco."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Yijia Shao", email = "shaoyj.echo@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
-    "sensing",
     "proactive_tutor",
     "external_api",
     "py_utils",
-    "memory",
-    "memory-mcp",
 ]
 
 # The workspace root is a virtual project: it exists only to tie the member
@@ -21,23 +18,15 @@ dependencies = [
 package = false
 
 [tool.uv.sources]
-sensing = { workspace = true }
 proactive_tutor = { workspace = true }
 external_api = { workspace = true }
 py_utils = { workspace = true }
-personalization = { workspace = true }
-memory = { workspace = true }
-memory-mcp = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "lib/sensing",
     "lib/proactive_tutor",
     "lib/external_api",
     "lib/py_utils",
-    "lib/personalization",
-    "lib/memory",
-    "lib/memory_mcp",
 ]
 
 [dependency-groups]

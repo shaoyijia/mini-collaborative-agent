@@ -1,37 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type React from 'react';
 import { S } from './styles';
 import ChatComposerActions from './ChatComposerActions';
 import './ChatComposer.css';
 import AgentWorkspace from './AgentWorkspace';
-import { ScreenContextChip } from './ScreenContext';
 import type { SavedConversation } from './types';
 import type { VoiceRecorderStatus } from '../../voice-recorder';
-
-const HOTKEY_LABEL =
-  typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
-    ? 'Cmd + Shift + Space'
-    : 'Ctrl + Shift + Space';
 
 interface Props {
   modelPicker?: React.ReactNode;
   workspaceSessionId: string | null;
   agentRunning: boolean;
   stopAgent: () => Promise<void>;
-  pendingContextLabel: string | null;
-  pendingContextRef: React.RefObject<string | null>;
-  setPendingContextLabel: React.Dispatch<React.SetStateAction<string | null>>;
-  /** The user just opened the chat from a suggestion shown in the transcript. */
-  discussingSuggestion: boolean;
-  /** Incremented to move the keyboard focus to the message box. */
-  composerFocusRequest: number;
-  /** Screen context to send with the next message, if any. */
-  pendingScreenContext: string | null;
-  clearPendingScreenContext: () => void;
   pendingImages: string[];
   openImagePreview: (imageDataUrl: string) => void;
-  openImageAnnotator: (imageDataUrl: string) => void;
-  pendingHotkeyImagesRef: React.RefObject<Set<string>>;
   setPendingImages: React.Dispatch<React.SetStateAction<string[]>>;
   understandingError: string;
   sending: boolean;
@@ -44,7 +26,6 @@ interface Props {
   startingNewSession: boolean;
   reviewing: SavedConversation | null;
   handleVoiceClick: (fromWakeWord?: boolean) => Promise<void>;
-  profile: { scenario: string; aiTools: string[]; hideAvatar: boolean };
   checkingUnderstanding: boolean;
   canSend: boolean;
   handleSend: () => void;
@@ -57,17 +38,8 @@ export default function ChatComposer({
   workspaceSessionId,
   agentRunning,
   stopAgent,
-  pendingContextLabel,
-  pendingContextRef,
-  setPendingContextLabel,
-  discussingSuggestion,
-  composerFocusRequest,
-  pendingScreenContext,
-  clearPendingScreenContext,
   pendingImages,
   openImagePreview,
-  openImageAnnotator,
-  pendingHotkeyImagesRef,
   setPendingImages,
   understandingError,
   sending,
@@ -80,7 +52,6 @@ export default function ChatComposer({
   startingNewSession,
   reviewing,
   handleVoiceClick,
-  profile,
   checkingUnderstanding,
   canSend,
   handleSend,
@@ -114,10 +85,6 @@ export default function ChatComposer({
       setAttachmentError('Could not select files. Please try again.');
     }
   };
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (composerFocusRequest > 0) textareaRef.current?.focus();
-  }, [composerFocusRequest]);
 
   return (
     <div style={S.composer}>
@@ -129,31 +96,6 @@ export default function ChatComposer({
         onStop={stopAgent}
       />
       <div className="chat-composer-surface" style={S.composerSurface}>
-        {pendingContextLabel && (
-          <div style={S.pendingContext}>
-            <span style={S.pendingContextText}>
-              Suggestion context attached: {pendingContextLabel}
-            </span>
-            <button
-              type="button"
-              style={S.pendingContextX}
-              aria-label="Remove suggestion context"
-              title="Remove suggestion context"
-              onClick={() => {
-                pendingContextRef.current = null;
-                setPendingContextLabel(null);
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        {pendingScreenContext && (
-          <ScreenContextChip
-            text={pendingScreenContext}
-            onRemove={clearPendingScreenContext}
-          />
-        )}
         {pendingImages.length > 0 && (
           <div style={S.pending}>
             {pendingImages.map((src, i) => (
@@ -168,25 +110,14 @@ export default function ChatComposer({
                 >
                   <img src={src} alt={`Attachment ${i + 1}`} style={S.thumb} />
                 </button>
-                {pendingHotkeyImagesRef.current.has(src) && (
-                  <button
-                    type="button"
-                    style={S.pendingAnnotate}
-                    aria-label={`Annotate hotkey screenshot ${i + 1}`}
-                    onClick={() => openImageAnnotator(src)}
-                  >
-                    ✎ Edit
-                  </button>
-                )}
                 <button
                   type="button"
                   style={S.pendingX}
                   aria-label={`Remove attached image ${i + 1}`}
                   title="Remove image"
-                  onClick={() => {
-                    pendingHotkeyImagesRef.current.delete(src);
-                    setPendingImages((prev) => prev.filter((_, j) => j !== i));
-                  }}
+                  onClick={() =>
+                    setPendingImages((prev) => prev.filter((_, j) => j !== i))
+                  }
                 >
                   ×
                 </button>
@@ -206,14 +137,10 @@ export default function ChatComposer({
           style={S.textarea}
           rows={2}
           aria-label="Message Coco"
-          ref={textareaRef}
           placeholder={
-            // eslint-disable-next-line no-nested-ternary
             voiceState !== 'idle'
               ? 'Listening to your voice…'
-              : discussingSuggestion
-                ? 'Ask about this suggestion…'
-                : 'Ask Coco… (drop files or paste an image)'
+              : 'Ask Coco… (drop files or paste an image)'
           }
           value={input}
           disabled={voiceState !== 'idle'}
@@ -272,12 +199,6 @@ export default function ChatComposer({
       )}
       {voiceState === 'idle' && voiceError && (
         <div style={S.voiceError}>{voiceError}</div>
-      )}
-      {voiceState === 'idle' && !voiceError && (
-        <div style={S.hotkeyHint}>
-          Press <span style={S.hotkeyKbd}>{HOTKEY_LABEL}</span> anytime to grab
-          a screenshot
-        </div>
       )}
     </div>
   );

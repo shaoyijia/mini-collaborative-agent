@@ -13,10 +13,10 @@ from py_utils.training_recorder import TrainingRecorder
 def test_training_recorder_writes_llm_metrics(tmp_path):
     metrics = {
         "call_id": "call-test",
-        "operation": "observer",
+        "operation": "tutor",
         "model": "fake-model",
         "provider": "fake",
-        "modality": "vlm",
+        "modality": "llm",
         "prompt_tokens": 21,
         "completion_tokens": 8,
         "cache_creation_input_tokens": 0,
@@ -30,18 +30,8 @@ def test_training_recorder_writes_llm_metrics(tmp_path):
         "success": True,
         "error": None,
     }
-    recorder = TrainingRecorder(str(tmp_path), retain_screenshots=False)
+    recorder = TrainingRecorder(str(tmp_path))
 
-    recorder.log_observation(
-        observation_id="obs-1",
-        ts=1.0,
-        obs_type="snapshot",
-        observer_input="input",
-        observer_output="output",
-        model="fake-model",
-        screenshot_paths=[],
-        llm_metrics=metrics,
-    )
     recorder.log_tutor(
         ts=2.0,
         session_id="session-1",
@@ -53,13 +43,8 @@ def test_training_recorder_writes_llm_metrics(tmp_path):
         llm_metrics=metrics,
     )
 
-    observation_rows = [
-        json.loads(line)
-        for line in (tmp_path / "observations.jsonl").read_text().splitlines()
-    ]
     tutor_rows = [
         json.loads(line)
         for line in (tmp_path / "tutor_calls.jsonl").read_text().splitlines()
     ]
-    assert observation_rows[0]["llm_metrics"] == metrics
     assert tutor_rows[0]["llm_metrics"] == metrics

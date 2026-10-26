@@ -1,7 +1,6 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AgentWorkspace from '../renderer/components/chat/AgentWorkspace';
-import { SuggestionMessage } from '../renderer/components/chat/MessageContent';
 
 it('chooses a folder and keeps the previous folder when the dialog is cancelled', async () => {
   let selected: { directory: string } | null = { directory: '/work/reports' };
@@ -89,39 +88,4 @@ it('disables folder changes during execution and forwards Stop', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
   await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
   expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDisabled();
-});
-
-it('only runs a proactive suggestion after an explicit click', () => {
-  const run = jest.fn();
-  const props = {
-    suggestion: {
-      kind: 'delegate' as const,
-      title: 'Analyze the file',
-      copyText: 'Analyze sales.csv',
-    },
-    folded: false,
-    onToggleFold: jest.fn(),
-    onRun: run,
-  };
-  const { rerender } = render(
-    <SuggestionMessage
-      suggestion={props.suggestion}
-      folded={false}
-      onToggleFold={props.onToggleFold}
-      onRun={run}
-    />,
-  );
-  expect(run).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Run with Coco' }));
-  expect(run).toHaveBeenCalledTimes(1);
-  rerender(
-    <SuggestionMessage
-      suggestion={props.suggestion}
-      folded={false}
-      onToggleFold={props.onToggleFold}
-      onRun={run}
-      runDisabled
-    />,
-  );
-  expect(screen.getByRole('button', { name: 'Run with Coco' })).toBeDisabled();
 });

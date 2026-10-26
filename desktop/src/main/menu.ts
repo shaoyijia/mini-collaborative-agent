@@ -1,19 +1,4 @@
-import {
-  app,
-  Menu,
-  BrowserWindow,
-  MenuItemConstructorOptions,
-} from 'electron';
-import http from 'http';
-
-function triggerScreenshot() {
-  const req = http.request(
-    { hostname: '127.0.0.1', port: 8080, path: '/hotkey/capture', method: 'POST' },
-    () => {}
-  );
-  req.on('error', () => {}); // silent if sensing server is not running
-  req.end();
-}
+import { app, Menu, BrowserWindow, MenuItemConstructorOptions } from 'electron';
 
 interface DarwinMenuItemConstructorOptions extends MenuItemConstructorOptions {
   selector?: string;
@@ -166,19 +151,7 @@ export default class MenuBuilder {
         ? subMenuViewDev
         : subMenuViewProd;
 
-    const subMenuScreenshot: MenuItemConstructorOptions = {
-      label: 'Screenshot',
-      submenu: [
-        {
-          label: 'Take Screenshot',
-          click: () => {
-            triggerScreenshot();
-          },
-        },
-      ],
-    };
-
-    return [subMenuAbout, subMenuEdit, subMenuView, subMenuWindow, subMenuScreenshot];
+    return [subMenuAbout, subMenuEdit, subMenuView, subMenuWindow];
   }
 
   buildDefaultTemplate() {

@@ -98,7 +98,7 @@
   min-width: 0;
   max-width: 220px;
 }
-.ob-feature-bubble .observation-bubble {
+.ob-feature-bubble .agent-bubble {
   position: relative;
   right: auto;
   bottom: auto;
@@ -107,12 +107,12 @@
   animation: none;
   pointer-events: none;
 }
-.ob-feature-bubble .observation-bubble-tail {
+.ob-feature-bubble .agent-bubble-tail {
   right: auto;
   left: -6px;
   transform: rotate(-135deg);
 }
-.ob-feature-bubble .observation-bubble-label::before {
+.ob-feature-bubble .agent-bubble-label::before {
   animation: none;
 }
 .ob-feature-menu {

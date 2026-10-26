@@ -1,5 +1,5 @@
 import type { AgentActivity } from '../../../shared/agent-execution';
-import type { TutorToolCall } from '../observation-types';
+import type { TutorToolCall } from '../agent-types';
 import { ToolCallCard } from './ToolCallCard';
 import { TutorMessage } from './MessageContent';
 import toolSummary from './tool-summary';

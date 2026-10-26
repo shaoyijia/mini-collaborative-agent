@@ -4,27 +4,14 @@ import type { ModelDraft, ConnectionTestStatus } from './ModelsStep';
 export default function useModelSetup() {
   const [modelError, setModelError] = useState('');
   const [savingModels, setSavingModels] = useState(false);
-  const [sensingEnabled, setSensingEnabled] = useState(false);
-  const [sensingModel, setSensingModel] = useState<ModelDraft>({
-    id: 'sensing',
-    label: 'Sensing',
-    provider: 'pi',
-    model: '',
-    apiKey: '',
-    baseUrl: '',
-  });
   const [tutorModels, setTutorModels] = useState<ModelDraft[]>([]);
   const [defaultTutorId, setDefaultTutorId] = useState('');
-  const [instantSuggestionModelId, setInstantSuggestionModelId] = useState('');
   const [connectionTests, setConnectionTests] = useState<
     Record<string, ConnectionTestStatus>
   >({});
 
-  const testModelConnection = async (
-    role: 'sensing' | 'tutor',
-    model: ModelDraft,
-  ) => {
-    const key = role === 'sensing' ? 'sensing' : model.id;
+  const testModelConnection = async (model: ModelDraft) => {
+    const key = model.id;
     if (!model.model.trim()) {
       setConnectionTests((current) => ({
         ...current,
@@ -39,10 +26,9 @@ export default function useModelSetup() {
     const result = await window.electron?.ipcRenderer.invoke(
       'test-model-connection',
       {
-        role,
         connection: {
           id: model.id,
-          label: model.label || (role === 'sensing' ? 'Sensing' : 'Chat'),
+          label: model.label || 'Chat',
           provider: model.provider,
           model: model.model,
           baseUrl: model.baseUrl,
@@ -90,17 +76,6 @@ export default function useModelSetup() {
           }
           return undefined;
         }
-        setSensingEnabled(Boolean(config.sensing));
-        if (config.sensing)
-          setSensingModel({
-            ...config.sensing,
-            model: String(config.sensing.model).replace(
-              /^(?:hosted_vllm|tinker)\//,
-              '',
-            ),
-            apiKey: '',
-            baseUrl: config.sensing.baseUrl ?? '',
-          });
         setTutorModels(
           config.tutors.map((item: any) => ({
             ...item,
@@ -110,7 +85,6 @@ export default function useModelSetup() {
           })),
         );
         setDefaultTutorId(config.defaultTutorId);
-        setInstantSuggestionModelId(config.instantSuggestionModelId || '');
         return undefined;
       })
       .catch(() => {});
@@ -118,10 +92,6 @@ export default function useModelSetup() {
 
   const saveModels = async () => {
     try {
-      if (sensingEnabled && !sensingModel.model.trim()) {
-        setModelError('Enter a vision-capable sensing model.');
-        return false;
-      }
       if (!tutorModels.length) {
         setModelError(
           'Add a Pi model or an additional model connection for chat.',
@@ -137,9 +107,6 @@ export default function useModelSetup() {
       setSavingModels(true);
       setModelError('');
       const credentials: Record<string, string> = {};
-      if (sensingEnabled && sensingModel.apiKey.trim()) {
-        credentials[`sensing:${sensingModel.provider}`] = sensingModel.apiKey;
-      }
       tutorModels.forEach((item) => {
         if (item.apiKey.trim())
           credentials[`tutor:${item.provider}`] = item.apiKey;
@@ -147,15 +114,6 @@ export default function useModelSetup() {
       const result = await window.electron?.ipcRenderer.invoke(
         'save-model-configuration',
         {
-          sensing: sensingEnabled
-            ? {
-                id: 'sensing',
-                label: 'Sensing',
-                provider: sensingModel.provider,
-                model: sensingModel.model,
-                baseUrl: sensingModel.baseUrl,
-              }
-            : null,
           tutors: tutorModels.map((item) => ({
             id: item.id,
             label: item.label,
@@ -164,7 +122,6 @@ export default function useModelSetup() {
             baseUrl: item.baseUrl,
           })),
           defaultTutorId,
-          instantSuggestionModelId: instantSuggestionModelId || undefined,
           credentials,
         },
       );
@@ -189,16 +146,10 @@ export default function useModelSetup() {
     savingModels,
     saveModels,
     modelProps: {
-      sensingEnabled,
-      setSensingEnabled,
-      sensing: sensingModel,
-      setSensing: setSensingModel,
       tutors: tutorModels,
       setTutors: setTutorModels,
       defaultTutorId,
       setDefaultTutorId,
-      instantSuggestionModelId,
-      setInstantSuggestionModelId,
       error: modelError,
       testStatuses: connectionTests,
       onTest: testModelConnection,

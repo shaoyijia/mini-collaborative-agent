@@ -1,7 +1,7 @@
 import cocoHelping from '../../../../assets/tool1.png';
 import cocoReady from '../../../../assets/wait1.png';
 import PetMenuIcon from '../PetMenuIcon';
-import ObservationBubble from '../ObservationBubble';
+import AgentBubble from '../AgentBubble';
 
 export default function WelcomeStep() {
   return (
@@ -10,7 +10,7 @@ export default function WelcomeStep() {
         <div
           className="ob-feature-scene"
           role="img"
-          aria-label="Coco offering a helpful suggestion"
+          aria-label="Coco letting you know a reply is ready"
         >
           <img
             className="ob-feature-illustration"
@@ -19,22 +19,21 @@ export default function WelcomeStep() {
             draggable={false}
           />
           <div className="ob-feature-bubble" inert aria-hidden="true">
-            <ObservationBubble
+            <AgentBubble
               bubble={{
-                status: 'support_needed',
-                phrase:
-                  'Comparing options? I can pull the key differences into a table.',
+                kind: 'reply',
+                text: 'Your reply is ready.',
+                target: { sessionId: '', requestId: '' },
                 fadingOut: false,
-                showHelpButton: true,
               }}
             />
           </div>
         </div>
         <div className="ob-feature-copy">
-          <strong>Help in the moment</strong>
+          <strong>Works with you</strong>
           <span>
-            Get a nudge when you’re stuck or discover a useful way to work with
-            AI.
+            Coco asks when it needs your input and lets you know when its reply
+            is ready. It never watches your screen.
           </span>
         </div>
       </div>

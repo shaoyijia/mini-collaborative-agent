@@ -3,28 +3,25 @@
 ### Model providers
 
 In desktop **Settings → Models & providers**, connect a provider through Pi once,
-then select **Connected through Pi** for a sensing or tutor model. Instant
-suggestions can use any configured tutor model, or follow the default chat model.
-Sensing requires image support. Models receiving screenshots in suggestions must
-also support images; unsupported input produces an error rather than silently
-routing to another provider.
+then add its models to chat. Models that receive pasted images must support image
+input, and voice messages need a model that accepts audio; unsupported input
+produces an error rather than silently routing to another provider.
 
 Pi-backed entries use `pi/<provider>/<model>` internally. Python services call an
 authenticated loopback inference bridge started by the desktop app; Pi retains
 its provider credentials. These calls do not create agent sessions or execute Pi
-file/command tools. Coco still owns sensing prompts and suggestion memory tools.
-The bridge requires the running desktop app; standalone Python CLI use continues
+file/command tools. The bridge requires the running desktop app; standalone Python CLI use continues
 to support the existing configured providers below. Pi inference currently
 accepts text, inline images, and function tools, but not audio input.
 
 Existing model configurations are retained. A legacy Pi chat override becomes a
-shared model entry, while the previous sensing and instant-suggestion assignments
-are preserved. Saving settings completes the migration.
+shared model entry. Sensing and instant-suggestion models saved by full Coco are
+ignored. Saving settings completes the migration.
 
 `external_api/llm.py` provides a provider-agnostic LLM wrapper, so a single `provider/model` ID is enough to switch backends. A recognized prefix selects an alternate backend; anything else falls through to [LiteLLM](https://docs.litellm.ai/docs/providers).
 
-> **⚠️ Privacy.** Coco's observer is multimodal: it sends **screenshots of your screen** to whichever model you select, so your provider choice determines where those pixels go. The following approaches offer stronger privacy guarantees than standard cloud APIs:
-> - Self-hosted VLMs, e.g., via [vLLM](https://github.com/vllm-project/vllm), [LM Studio](https://lmstudio.ai/)
+> **⚠️ Privacy.** Your messages, pasted images, voice recordings, and the output of tools the agent runs go to whichever model you select, so your provider choice determines where that data goes. The following approaches offer stronger privacy guarantees than standard cloud APIs:
+> - Self-hosted models, e.g., via [vLLM](https://github.com/vllm-project/vllm), [LM Studio](https://lmstudio.ai/)
 > - Trusted Execution Environment (TEE) providers — open-weight models hosted on attested secure hardware, e.g. [Tinfoil](https://tinfoil.sh/)
 > - [Unlinkable inference](https://openanonymity.ai/blog/unlinkable-inference/) — relays requests to any model provider while adding confidentiality, e.g. [Open Anonymity](https://chat.openanonymity.ai/)
 

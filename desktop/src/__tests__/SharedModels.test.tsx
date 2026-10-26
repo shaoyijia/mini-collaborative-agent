@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react';
 import LocalModelSettings from '../renderer/components/chat/LocalModelSettings';
 
-it('selects connected Pi models for sensing and suggestions and saves through the shared configuration', async () => {
+it('saves connected Pi chat models through the shared configuration', async () => {
   const invoke = jest.fn(async (channel, action) => {
     if (channel === 'pi-provider')
       return {
@@ -27,12 +27,6 @@ it('selects connected Pi models for sensing and suggestions and saves through th
       };
     if (channel === 'get-model-configuration')
       return {
-        sensing: {
-          id: 'sensing',
-          label: 'Sensing',
-          provider: 'pi',
-          model: 'pi/test/vision',
-        },
         tutors: [
           {
             id: 'chat',
@@ -50,98 +44,66 @@ it('selects connected Pi models for sensing and suggestions and saves through th
   });
   (window as any).electron = { ipcRenderer: { invoke } };
   const view = render(<LocalModelSettings />);
-  await waitFor(() =>
-    expect(screen.getByLabelText('Sensing Pi model')).toHaveValue(
-      'pi/test/vision',
-    ),
-  );
+  await screen.findByDisplayValue('Fast');
   await waitFor(() =>
     expect(
       screen.getByRole('heading', { name: 'Pi connections' }),
     ).toBeInTheDocument(),
   );
-  const sensing = screen.getByLabelText(
-    'Sensing Pi model',
-  ) as HTMLSelectElement;
-  expect(
-    [...sensing.options].some((option) => option.value === 'pi/test/text'),
-  ).toBe(false);
-  fireEvent.change(screen.getByLabelText('Instant suggestion model'), {
-    target: { value: 'fast' },
-  });
   fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
   await screen.findByText('Saved');
-  expect(invoke).toHaveBeenCalledWith(
-    'save-model-configuration',
-    expect.objectContaining({
-      sensing: expect.objectContaining({
-        provider: 'pi',
-        model: 'pi/test/vision',
-      }),
-      defaultTutorId: 'chat',
-      instantSuggestionModelId: 'fast',
-      credentials: {},
-    }),
-  );
+  expect(invoke).toHaveBeenCalledWith('save-model-configuration', {
+    tutors: [
+      expect.objectContaining({ id: 'chat', model: 'pi/test/vision' }),
+      expect.objectContaining({ id: 'fast', model: 'pi/test/text' }),
+    ],
+    defaultTutorId: 'chat',
+    credentials: {},
+  });
   expect(screen.queryByText('Use native Pi')).not.toBeInTheDocument();
   view.unmount();
 });
 
-it.each([false, true])(
-  'saves chat without sensing (previously enabled: %s)',
-  async (previouslyEnabled) => {
-    const connection = {
-      id: 'chat',
-      label: 'My chat',
-      provider: 'pi',
-      model: 'pi/test/text',
-    };
-    const invoke = jest.fn(async (channel) => {
-      if (channel === 'get-model-configuration')
-        return {
-          sensing: previouslyEnabled ? { ...connection, id: 'sensing' } : null,
-          tutors: [connection],
-          defaultTutorId: 'chat',
-        };
-      if (channel === 'pi-provider')
-        return {
-          connection: { mode: 'coco' },
-          providers: [],
-          models: [],
-          flow: null,
-        };
-      if (channel === 'save-model-configuration') return { success: true };
-      return null;
-    });
-    (window as any).electron = { ipcRenderer: { invoke } };
-    const view = render(<LocalModelSettings />);
-    await screen.findByDisplayValue('My chat');
-    const toggle = screen.getByRole('checkbox', {
-      name: 'Enable screen sensing (optional)',
-    });
-    if (previouslyEnabled) fireEvent.click(toggle);
-    expect(toggle).not.toBeChecked();
-    expect(
-      screen.getByText(
-        /proactive suggestions and self-evolving memory are unavailable/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText('Sensing Pi model')).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save model settings' }),
-    );
-    await screen.findByText('Saved');
-    expect(invoke).toHaveBeenCalledWith(
-      'save-model-configuration',
-      expect.objectContaining({
-        sensing: null,
-        tutors: [expect.objectContaining(connection)],
-        credentials: {},
-      }),
-    );
-    view.unmount();
-  },
-);
+it('drops a sensing model left by an older configuration and offers no sensing settings', async () => {
+  const connection = {
+    id: 'chat',
+    label: 'My chat',
+    provider: 'pi',
+    model: 'pi/test/text',
+  };
+  const invoke = jest.fn(async (channel) => {
+    if (channel === 'get-model-configuration')
+      return {
+        sensing: { ...connection, id: 'sensing' },
+        tutors: [connection],
+        defaultTutorId: 'chat',
+      };
+    if (channel === 'pi-provider')
+      return {
+        connection: { mode: 'coco' },
+        providers: [],
+        models: [],
+        flow: null,
+      };
+    if (channel === 'save-model-configuration') return { success: true };
+    return null;
+  });
+  (window as any).electron = { ipcRenderer: { invoke } };
+  const view = render(<LocalModelSettings />);
+  await screen.findByDisplayValue('My chat');
+  expect(screen.queryByText(/sensing/i)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
+  await screen.findByText('Saved');
+  const saved = invoke.mock.calls.find(
+    ([channel]) => channel === 'save-model-configuration',
+  ) as unknown as [string, any];
+  expect(saved[1]).toEqual({
+    tutors: [expect.objectContaining(connection)],
+    defaultTutorId: 'chat',
+    credentials: {},
+  });
+  view.unmount();
+});
 
 it('adds Pi and additional models to one chat list with only four additional providers', async () => {
   const invoke = jest.fn(async (channel) => {
@@ -195,8 +157,8 @@ it('adds Pi and additional models to one chat list with only four additional pro
   const saved = invoke.mock.calls.find(
     ([channel]) => channel === 'save-model-configuration',
   ) as unknown as [string, any];
+  expect(saved[1]).not.toHaveProperty('sensing');
   expect(saved[1]).toMatchObject({
-    sensing: null,
     tutors: [
       { provider: 'pi', model: 'pi/test/chat' },
       { provider: 'lm_studio', model: 'lm_studio/local' },
@@ -220,7 +182,7 @@ it('keeps an existing direct provider editable without offering it on new connec
   };
   const invoke = jest.fn(async (channel) => {
     if (channel === 'get-model-configuration')
-      return { sensing: null, tutors: [legacy], defaultTutorId: 'legacy' };
+      return { tutors: [legacy], defaultTutorId: 'legacy' };
     if (channel === 'pi-provider')
       return {
         connection: { mode: 'coco' },

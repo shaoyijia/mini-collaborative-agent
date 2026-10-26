@@ -126,7 +126,7 @@ _CAPABILITIES: dict[str, str] = {
 
 
 # User-defined tools from onboarding are encoded as single strings so they ride
-# through the same aiTools list (see observation-types.ts):
+# through the same aiTools list:
 #   custom_chatbot:<name>|<url>|<description>
 #   custom_agent:<name>|<description>
 _CUSTOM_CHATBOT_PREFIX = "custom_chatbot:"

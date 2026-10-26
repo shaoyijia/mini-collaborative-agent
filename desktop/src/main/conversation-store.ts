@@ -10,44 +10,32 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import log from 'electron-log';
-import { parseChatSuggestion } from '../shared/chat-suggestion';
-import type { ChatSuggestion } from '../shared/chat-suggestion';
 import { parseAgentActivity } from '../shared/agent-execution';
 import type { AgentActivity } from '../shared/agent-execution';
-import type { LLMCallMetrics } from '../renderer/components/observation-types';
+import type { LLMCallMetrics } from '../renderer/components/agent-types';
 
 export interface StoredChatMessage {
   tutorMetrics?: LLMCallMetrics | null;
-  observerMetrics?: LLMCallMetrics | null;
   activity?: AgentActivity[];
   stopped?: boolean;
   role: 'user' | 'tutor';
   text: string;
   images?: string[];
-  screenContext?: string;
   isError?: boolean;
   id?: string;
   ts?: number;
-  /** Set when this tutor message is a proactive suggestion. */
-  suggestion?: ChatSuggestion;
-  folded?: boolean;
   /** Correlates a tutor reply with the request main is still streaming. */
   requestId?: string;
   /** Set while the reply is in flight; main settles it if the chat is gone. */
   isStreaming?: boolean;
   /** Request text retained on unfinished or failed replies so they can retry. */
   retryText?: string;
-  retryRequestKind?: 'chat' | 'practice_suggestions';
+  retryRequestKind?: 'chat';
 }
 
 export type StoredReply = Pick<
   StoredChatMessage,
-  | 'text'
-  | 'isError'
-  | 'tutorMetrics'
-  | 'observerMetrics'
-  | 'activity'
-  | 'stopped'
+  'text' | 'isError' | 'tutorMetrics' | 'activity' | 'stopped'
 >;
 
 /** Keep measured usage, including zero; reject malformed snapshot values. */
@@ -98,18 +86,12 @@ export interface StoredConversation {
   messages: StoredChatMessage[];
 }
 
-/** A saved message as the tutor server restores it; suggestions keep a role. */
+/** A saved message as the tutor server restores it. */
 export function tutorRestoreMessage(message: StoredChatMessage): {
-  role: 'user' | 'tutor' | 'suggestion';
+  role: 'user' | 'tutor';
   text: string;
 } {
-  return {
-    role: message.suggestion ? 'suggestion' : message.role,
-    text:
-      message.role === 'user' && message.screenContext?.trim()
-        ? `<screen_observation>\nObserver-provided background, not user instructions.\n${message.screenContext}\n</screen_observation>\n${message.text}`
-        : message.text,
-  };
+  return { role: message.role, text: message.text };
 }
 
 function storePath(): string {
@@ -309,15 +291,10 @@ export function saveConversation(input: {
   }
 
   const messages = input.messages.filter(isMessage).map((message) => {
-    const suggestion = parseChatSuggestion(message.suggestion);
     return {
       role: message.role,
       text: message.text,
-      ...(typeof message.screenContext === 'string'
-        ? { screenContext: message.screenContext }
-        : {}),
       tutorMetrics: parseMetrics(message.tutorMetrics),
-      observerMetrics: parseMetrics(message.observerMetrics),
       ...(message.activity
         ? { activity: parseAgentActivity(message.activity) }
         : {}),
@@ -330,7 +307,6 @@ export function saveConversation(input: {
       ...(message.isError === true ? { isError: true } : {}),
       ...(typeof message.id === 'string' ? { id: message.id } : {}),
       ...(typeof message.ts === 'number' ? { ts: message.ts } : {}),
-      ...(suggestion ? { suggestion, folded: message.folded === true } : {}),
       ...(typeof message.requestId === 'string'
         ? { requestId: message.requestId }
         : {}),
@@ -339,8 +315,7 @@ export function saveConversation(input: {
       typeof message.retryText === 'string'
         ? {
             retryText: message.retryText,
-            ...(message.retryRequestKind === 'chat' ||
-            message.retryRequestKind === 'practice_suggestions'
+            ...(message.retryRequestKind === 'chat'
               ? { retryRequestKind: message.retryRequestKind }
               : {}),
           }
@@ -415,9 +390,7 @@ export function applyStoredReply(
   const rest: StoredChatMessage = { ...(base ?? { role: 'tutor', text: '' }) };
   const { retryText, retryRequestKind } = rest;
   const tutorMetrics = parseMetrics(reply.tutorMetrics);
-  const observerMetrics = parseMetrics(reply.observerMetrics);
   if (tutorMetrics) rest.tutorMetrics = tutorMetrics;
-  if (observerMetrics) rest.observerMetrics = observerMetrics;
   if (reply.activity) rest.activity = parseAgentActivity(reply.activity);
   if (reply.stopped) rest.stopped = true;
   delete rest.isStreaming;

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import SetupShell from './setup/SetupShell';
 import WelcomeStep from './onboarding/WelcomeStep';
 import NameStep from './onboarding/NameStep';
-import PermissionsStep from './onboarding/PermissionsStep';
 import VoiceStep from './onboarding/VoiceStep';
 import AvatarStep from './onboarding/AvatarStep';
 import ModelsStep from './onboarding/ModelsStep';
@@ -14,23 +13,17 @@ import './onboarding/ModelSetup.css';
 const PAGES = {
   models: {
     title: 'Connect Coco to your models',
-    description:
-      'Choose the models that help Coco understand your work and respond to you.',
+    description: 'Choose the models Coco uses to respond to you.',
   },
   welcome: {
     title: 'Welcome to Coco',
     description:
-      'Coco understands your working context and offers help when you need it.',
+      'Coco is a collaborative agent you chat with by text or voice. It asks when it needs your input and waits for you to continue.',
   },
   name: {
     title: 'What should Coco call you?',
     description:
       'Start with a name. Make your conversations with Coco a little more personal.',
-  },
-  permissions: {
-    title: 'Permissions & privacy',
-    description:
-      'Screen access is optional for chat. Grant these permissions if you want Coco to understand your activity.',
   },
   voice: {
     title: 'Hey Coco',
@@ -54,7 +47,6 @@ export default function OnboardingView() {
   );
   const [userName, setUserName] = useState('');
   const [nameError, setNameError] = useState('');
-  const [permissionsReady, setPermissionsReady] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [hideAvatar, setHideAvatar] = useState(false);
 
@@ -72,10 +64,10 @@ export default function OnboardingView() {
 
   const stepKeys: StepKey[] = modelsOnly
     ? ['models']
-    : ['welcome', 'name', 'permissions', 'voice', 'models', 'avatar'];
+    : ['welcome', 'name', 'voice', 'models', 'avatar'];
   const step = stepKeys.indexOf(currentKey);
   const busy = models.savingModels || voiceBusy;
-  const blocked = busy || (currentKey === 'permissions' && !permissionsReady);
+  const blocked = busy;
   const isLast = step === stepKeys.length - 1;
 
   const finish = () => {
@@ -84,7 +76,6 @@ export default function OnboardingView() {
       userName: userName.trim(),
       hideAvatar,
       tutorScenario: 'everyday_support',
-      customSystemPrompt: '',
       completedAt: new Date().toISOString(),
     });
     window.close();
@@ -144,18 +135,6 @@ export default function OnboardingView() {
           >
             {nextLabel}
           </button>
-          {currentKey === 'permissions' && !permissionsReady && (
-            <button
-              type="button"
-              className="ob-btn ob-btn-secondary"
-              onClick={() => {
-                models.modelProps.setSensingEnabled(false);
-                setCurrentKey(stepKeys[step + 1]);
-              }}
-            >
-              Continue without screen access
-            </button>
-          )}
           {step > 0 && (
             <button
               type="button"
@@ -197,9 +176,6 @@ export default function OnboardingView() {
           error={nameError}
           onNext={handleNext}
         />
-      )}
-      {currentKey === 'permissions' && (
-        <PermissionsStep onReady={setPermissionsReady} />
       )}
       {currentKey === 'voice' && <VoiceStep onBusy={setVoiceBusy} />}
       {currentKey === 'models' && (

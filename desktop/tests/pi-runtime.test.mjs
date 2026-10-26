@@ -14,9 +14,9 @@ test('pi executes built-in and Coco tools, resumes its session, and aborts', asy
   let notifyRequest;
   let lastRequest;
   const tools = [
-    'observe_screen',
-    'get_user_context',
-    'get_recent_observations',
+    'list_calendars',
+    'lookup_reference',
+    'get_calendar_events',
   ].map((name) => ({
     type: 'function',
     function: {
@@ -31,7 +31,7 @@ test('pi executes built-in and Coco tools, resumes its session, and aborts', asy
     for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     if (req.url === '/agent/tools/execute') {
-      assert.equal(body.name, 'get_user_context');
+      assert.equal(body.name, 'lookup_reference');
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
@@ -111,10 +111,10 @@ test('pi executes built-in and Coco tools, resumes its session, and aborts', asy
           },
           {
             index: 1,
-            id: 'memory-1',
+            id: 'lookup-1',
             type: 'function',
             function: {
-              name: 'get_user_context',
+              name: 'lookup_reference',
               arguments: '{"query":"preferences"}',
             },
           },
@@ -187,7 +187,7 @@ test('pi executes built-in and Coco tools, resumes its session, and aborts', asy
       events.some(
         (event) =>
           event.type === 'tool_execution_end' &&
-          event.toolName === 'get_user_context' &&
+          event.toolName === 'lookup_reference' &&
           !event.isError,
       ),
     );

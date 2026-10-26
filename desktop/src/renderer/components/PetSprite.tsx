@@ -16,19 +16,14 @@ import write1 from '../../../assets/write1.png';
 import write2 from '../../../assets/write2.png';
 import write3 from '../../../assets/write3.png';
 
-import type { PetMood } from './observation-types';
+import type { PetMood } from './agent-types';
 
-// Static moods → single still image, no interval. Avoids the constant bob
-// pulling the user's eye during normal work; movement is reserved for moments
-// when something actually changed (a new observation arrived → write/wait/
-// tool/sleep packs).
-const STATIC_FRAMES: Record<'dormant' | 'idle', string> = {
-  dormant: petIdle1, // pre-session — awake, but no observation received yet
-  idle: petIdle1, // post-event resting state
-};
-
+// Idle is a single still image, no interval. Avoids the constant bob pulling
+// the user's eye during normal work; movement is reserved for moments when
+// something actually changed (the agent is working or has replied, or Coco
+// is asleep).
 // Animation packs — each pool is played in array order on a setInterval.
-const FRAMES: Record<Exclude<PetMood, 'dormant' | 'idle'>, string[]> = {
+const FRAMES: Record<Exclude<PetMood, 'idle'>, string[]> = {
   write: [write1, write2, write3],
   wait: [wait1, wait2, wait3, wait4],
   tool: [tool1, tool2, tool3, tool4],
@@ -37,21 +32,18 @@ const FRAMES: Record<Exclude<PetMood, 'dormant' | 'idle'>, string[]> = {
 
 // Frames-per-second per animated mood. Tuned to feel ambient rather than
 // twitchy — the pet should suggest activity, not demand attention.
-const FPS: Record<Exclude<PetMood, 'dormant' | 'idle'>, number> = {
+const FPS: Record<Exclude<PetMood, 'idle'>, number> = {
   write: 4,
   wait: 1.5,
   tool: 3,
   sleep: 1,
 };
 
-const isStatic = (m: PetMood): m is 'dormant' | 'idle' =>
-  m === 'dormant' || m === 'idle';
-
 export default function PetSprite({ mood }: { mood: PetMood }) {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
-    if (isStatic(mood)) {
+    if (mood === 'idle') {
       setFrame(0);
       return undefined;
     }
@@ -66,10 +58,10 @@ export default function PetSprite({ mood }: { mood: PetMood }) {
     return () => clearInterval(id);
   }, [mood]);
 
-  const src = isStatic(mood) ? STATIC_FRAMES[mood] : FRAMES[mood][frame];
+  const src = mood === 'idle' ? petIdle1 : FRAMES[mood][frame];
   // pet1.png has a substantially wider non-transparent drawing than the sleep
   // frames, so give it a smaller scale to keep the visible fox footprint stable.
-  const isAwake = mood === 'idle' || mood === 'dormant';
+  const isAwake = mood === 'idle';
 
   return (
     <img

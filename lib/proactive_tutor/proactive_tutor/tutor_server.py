@@ -4,7 +4,6 @@ FastAPI server exposing TutorSystem over HTTP.
 
 import asyncio
 import json
-import os
 from pathlib import Path
 
 import chz
@@ -26,11 +25,6 @@ app = FastAPI(title="Tutor System API")
 tutor: TutorSystem | None = None
 app.include_router(create_pi_router(lambda: tutor))
 
-# Model the server was started with. Used by the stateless /suggestion/instant
-# endpoint, which does not own a TutorSystem instance. Set in main_async();
-# empty until then (the server requires an explicit --model_name at startup).
-configured_model_name: str = ""
-
 
 # ---------------------------------------------------------------------------
 # Request / Response models
@@ -38,20 +32,8 @@ configured_model_name: str = ""
 
 
 class EventRequest(BaseModel):
-    observation: str
     image_paths: list[str] | None = (
-        None  # absolute paths of screenshots to send to the LLM
-    )
-    trigger_reason: str = (
-        "struggle"  # "struggle" | "inefficiency" | "blind_acceptance" | "pause"
-        #            | "framework_introduction" | "teaching_moment"
-        #            | "discernment_opportunity"
-    )
-    evidence: str = (
-        ""  # one-sentence summary from the judge LLM explaining why it fired
-    )
-    teaching_depth: str = (
-        "not_applicable"  # "introduce" | "reinforce" | "deepen" | "not_applicable"
+        None  # absolute paths of user-attached images to send to the LLM
     )
     user_text: str | None = (
         None  # raw text typed by the user; recorded in conversation_history with a timestamp
@@ -70,32 +52,10 @@ class GuidanceResponse(BaseModel):
     tool_calls: list[dict] = Field(default_factory=list)
 
 
-class InstantSuggestionRequest(BaseModel):
-    observation: str
-    image_paths: list[str] | None = None
-    task_label: str | None = None
-    scenario: str = "everyday_support"
-    ai_tools: list[str] = []
-
-
-class InstantSuggestionResponse(BaseModel):
-    kind: str  # "content" | "delegate"
-    title: str
-    body: str | None = None
-    targetTool: str | None = None
-    prompt: str | None = None
-    copyText: str  # unified text the UI copies (body for content, prompt for delegate)
-    llm_metrics: dict | None = None
-
-
 class ContextResponse(BaseModel):
     conversation_history: list[str]
     problem_statement: str
-    memory: str = ""
     image_num: int
-    curriculum_state: dict = {}
-    competency_counts: dict = {}
-    intervention_count: int = 0
 
 
 class ModelRequest(BaseModel):
@@ -110,10 +70,6 @@ class ProblemStatementRequest(BaseModel):
     problem_statement: str
 
 
-class MemoryRequest(BaseModel):
-    memory: str
-
-
 class ConversationMessage(BaseModel):
     role: str
     text: str
@@ -121,10 +77,6 @@ class ConversationMessage(BaseModel):
 
 class ConversationRequest(BaseModel):
     messages: list[ConversationMessage]
-
-
-class MemoryResponse(BaseModel):
-    memory: str
 
 
 class AiToolsRequest(BaseModel):
@@ -449,46 +401,15 @@ async def health():
     return StatusResponse(status="healthy", service="coco-tutor")
 
 
-@app.post("/suggestion/instant", response_model=InstantSuggestionResponse)
-async def suggestion_instant(req: InstantSuggestionRequest):
-    """Generate a ready-to-use suggestion for a single observation.
-
-    Stateless and pre-session: does NOT require an initialized TutorSystem.
-    The desktop app calls this eagerly when a proactive bubble appears so the
-    suggestion can be revealed instantly when the user clicks "Help me".
-    """
-    from proactive_tutor.instant_suggestion import (
-        generate_instant_suggestion_with_metrics,
-    )
-
-    try:
-        result, llm_metrics = await asyncio.to_thread(
-            generate_instant_suggestion_with_metrics,
-            req.observation,
-            req.task_label,
-            req.scenario,
-            req.ai_tools,
-            os.environ.get("COCO_INSTANT_SUGGESTION_MODEL") or configured_model_name,
-            tutor.memory if tutor is not None else TutorSystem._load_memory(),
-            req.image_paths,
-        )
-        result["llm_metrics"] = llm_metrics
-        return InstantSuggestionResponse(**result)
-    except Exception as e:
-        logger.error(f"instant suggestion failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
 @app.post("/events/user_prompt", response_model=GuidanceResponse)
 async def handle_user_prompt(req: EventRequest):
-    """Receive a pre-computed observation + context and return tutor guidance."""
+    """Run one user turn and return tutor guidance."""
     if tutor is None:
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     try:
         # TutorSystem calls are blocking (LLM I/O); run in a thread.
         raw_guidance, llm_metrics = await asyncio.to_thread(
             tutor.handle_user_prompt_with_metrics,
-            req.observation,
             req.image_paths,
             req.user_text,
         )
@@ -520,7 +441,6 @@ async def handle_user_prompt_stream(req: EventRequest):
         worker = asyncio.create_task(
             asyncio.to_thread(
                 tutor.handle_user_prompt_with_metrics,
-                req.observation,
                 req.image_paths,
                 req.user_text,
                 publish,
@@ -539,22 +459,11 @@ async def handle_user_prompt_stream(req: EventRequest):
                 event = queue.get_nowait()
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             guidance = await asyncio.to_thread(_process_guidance, raw_guidance)
-            tool_calls = llm_metrics.get("tool_calls", [])
-            observer_metrics = next(
-                (
-                    call.get("result", {}).get("llm_metrics")
-                    for call in tool_calls
-                    if call.get("name") == "observe_screen"
-                    and isinstance(call.get("result"), dict)
-                ),
-                None,
-            )
             done = {
                 "type": "done",
                 "guidance": guidance,
                 "llm_metrics": llm_metrics,
-                "tool_calls": tool_calls,
-                "observer_metrics": observer_metrics,
+                "tool_calls": llm_metrics.get("tool_calls", []),
             }
             yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
         except Exception as exc:
@@ -606,7 +515,6 @@ async def handle_audio_prompt_stream(req: AudioEventRequest):
                 "guidance": guidance,
                 "llm_metrics": llm_metrics,
                 "tool_calls": llm_metrics.get("tool_calls", []),
-                "observer_metrics": None,
             }
             yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
         except Exception as exc:
@@ -617,62 +525,32 @@ async def handle_audio_prompt_stream(req: AudioEventRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.post("/events/pause", response_model=GuidanceResponse)
-async def handle_pause(req: EventRequest):
-    """Receive a pre-computed observation + context for a pause event and return tutor guidance."""
-    if tutor is None:
-        raise HTTPException(status_code=503, detail="TutorSystem not initialized")
-    try:
-        raw_guidance, llm_metrics = await asyncio.to_thread(
-            tutor.handle_pause_with_metrics,
-            req.observation,
-            req.trigger_reason,
-            req.evidence,
-            req.teaching_depth,
-        )
-        guidance = await asyncio.to_thread(_process_guidance, raw_guidance)
-        return GuidanceResponse(
-            guidance=guidance,
-            llm_metrics=llm_metrics,
-            tool_calls=llm_metrics.get("tool_calls", []),
-        )
-    except Exception as e:
-        logger.error(f"Error in handle_pause: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
 @app.get("/context", response_model=ContextResponse)
 async def get_context():
-    """Return conversation history and problem statement for the Streamer to build context prompts."""
+    """Return the current conversation history and problem statement."""
     if tutor is None:
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     kargs = tutor.get_kargs()
     return ContextResponse(
         conversation_history=kargs["conversation_history"],
         problem_statement=kargs["problem_statement"],
-        memory=kargs.get("memory", ""),
         image_num=kargs["image_num"],
-        curriculum_state=kargs.get("curriculum_state", {}),
-        competency_counts=kargs.get("competency_counts", {}),
-        intervention_count=kargs.get("intervention_count", 0),
     )
 
 
 @app.post("/config/model", response_model=StatusResponse)
 async def set_model(req: ModelRequest):
-    """Switch the model used by both diagnostic and tutor agents."""
-    global configured_model_name
+    """Switch the model used by the tutor agent."""
     if tutor is None:
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     tutor.set_model(req.model)
-    configured_model_name = req.model
     logger.info(f"Model updated: {req.model}")
     return StatusResponse(status="ok")
 
 
 @app.post("/config/scenario", response_model=StatusResponse)
 async def set_scenario(req: ScenarioRequest):
-    """Switch the scenario (student_learning, ai_upskilling, or everyday_support), reloading prompts."""
+    """Switch the scenario, reloading prompts."""
     if tutor is None:
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     tutor.set_scenario(req.scenario)
@@ -687,23 +565,6 @@ async def set_problem_statement(req: ProblemStatementRequest):
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     tutor.handle_problem_statement(req.problem_statement)
     logger.info(f"Problem statement updated: {req.problem_statement[:80]}...")
-    return StatusResponse(status="ok")
-
-
-@app.get("/context/memory", response_model=MemoryResponse)
-async def get_memory():
-    """Return the long-term personalized memory (for the UI to view/edit)."""
-    if tutor is None:
-        raise HTTPException(status_code=503, detail="TutorSystem not initialized")
-    return MemoryResponse(memory=tutor.memory)
-
-
-@app.post("/context/memory", response_model=StatusResponse)
-async def set_memory(req: MemoryRequest):
-    """Replace the long-term personalized memory and persist it to disk."""
-    if tutor is None:
-        raise HTTPException(status_code=503, detail="TutorSystem not initialized")
-    tutor.set_memory(req.memory)
     return StatusResponse(status="ok")
 
 
@@ -732,16 +593,15 @@ async def set_user_name(req: UserNameRequest):
 
 @app.post("/context/reset", response_model=StatusResponse)
 async def reset_context():
-    """Reset all per-session state (conversation history, curriculum state, problem statement).
+    """Reset all per-session state (conversation history, problem statement).
 
-    Called by the sensing server whenever a new TutorAgentNode session begins so
-    that conversation history and curriculum progress from the previous session do
-    not bleed into the new one.
+    Called by the desktop app whenever a new conversation begins so that history
+    from the previous conversation does not bleed into the new one.
     """
     if tutor is None:
         raise HTTPException(status_code=503, detail="TutorSystem not initialized")
     tutor.reset_session()
-    logger.info("Session reset: conversation history and curriculum state cleared")
+    logger.info("Session reset: conversation history cleared")
     return StatusResponse(status="ok")
 
 
@@ -867,8 +727,7 @@ async def retry_visualization(req: VizRetryRequest):
 
 
 async def main_async(port: int = 8081, model_name: str = ""):
-    global tutor, configured_model_name
-    configured_model_name = model_name
+    global tutor
     # Ensure the visualization output directory exists at startup.
     VIZ_ROOT.mkdir(parents=True, exist_ok=True)
     logger.info(f"Visualization output directory: {VIZ_ROOT}")

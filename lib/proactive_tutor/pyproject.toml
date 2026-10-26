@@ -1,14 +1,13 @@
 [project]
 name = "proactive_tutor"
 version = "0.1.0"
-description = "Tutor agent that obverses the user screen and provides multimodal feedback."
+description = "Chat agent service that bridges the Coco desktop app to model providers."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # Workspace siblings
     "external_api",
     "py_utils",
-    "memory-mcp",
     "mcp>=1.8.1,<2",
     # Web server
     "fastapi>=0.104.0",
@@ -18,6 +17,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.25.0",
     "pyobjc-framework-EventKit>=10.0; sys_platform == 'darwin'",
+    # Fully local, streaming wake-word inference for the desktop app.
+    "numpy>=1.24.0",
+    "sherpa-onnx==1.13.6",
+    # sherpa-onnx 1.13.6 declares this runtime companion in wheel metadata,
+    # but keeping it explicit prevents installers from omitting its dylibs.
+    "sherpa-onnx-core==1.13.6",
 ]
 
 [build-system]
@@ -30,7 +35,6 @@ packages = ["."]
 [tool.uv.sources]
 external_api = { workspace = true }
 py_utils = { workspace = true }
-memory-mcp = { workspace = true }
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py", "*_test.py"]

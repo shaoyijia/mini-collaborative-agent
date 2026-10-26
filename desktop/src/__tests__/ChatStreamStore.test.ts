@@ -16,7 +16,7 @@ it('saves interleaved background replies, questions, and completion without stal
   (app.getPath as jest.Mock).mockReturnValue(directory);
   const store = new ChatStreamStore();
   try {
-    store.begin('a', 'ra', 'Task A', [], false, undefined, 'Draft A is open.');
+    store.begin('a', 'ra', 'Task A');
     store.begin('b', 'rb', 'Task B');
     store.accept('ra', { type: 'text_delta', text: 'A is thinking' });
     store.accept('rb', {
@@ -45,12 +45,10 @@ it('saves interleaved background replies, questions, and completion without stal
       saved.find((item) => item.sessionId === 'b')?.messages[1].activity?.[0],
     ).toMatchObject({ call: { status: 'running' } });
     const userA = saved.find((item) => item.sessionId === 'a')!.messages[0];
-    expect(userA.screenContext).toBe('Draft A is open.');
-    expect(tutorRestoreMessage(userA).text).toContain(
-      'Draft A is open.\n</screen_observation>\nTask A',
-    );
-    expect(saved.find((item) => item.sessionId === 'b')!.messages[0].screenContext)
-      .toBeUndefined();
+    expect(tutorRestoreMessage(userA)).toEqual({
+      role: 'user',
+      text: 'Task A',
+    });
     const stale = saved.find((item) => item.sessionId === 'a')!;
     store.accept('ra', { type: 'done', guidance: 'A finished' });
     store.finish('ra');

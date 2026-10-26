@@ -1,17 +1,11 @@
 import {
-  buildRoleModelEnvironments,
+  buildTutorModelEnvironment,
   credentialId,
-  resolveModelIds,
+  resolveTutorModelId,
   validateModelConfiguration,
 } from './model-config-store';
 
 describe('model configuration', () => {
-  const sensing = {
-    id: 'sensing',
-    label: 'Private sensing',
-    provider: 'hosted_vllm' as const,
-    model: 'hosted_vllm/Qwen/VL',
-  };
   const tutors = [
     {
       id: 'fast',
@@ -27,90 +21,75 @@ describe('model configuration', () => {
     },
   ];
 
-  it('requires independent sensing and tutor selections', () => {
+  it('keeps the tutor selections and default', () => {
+    expect(
+      validateModelConfiguration({ tutors, defaultTutorId: 'fast' }),
+    ).toEqual({ version: 1, tutors, defaultTutorId: 'fast' });
+  });
+
+  it('ignores a sensing model left in an older configuration', () => {
     expect(
       validateModelConfiguration({
-        sensing,
+        sensing: { ...tutors[0], id: 'sensing' },
         tutors,
         defaultTutorId: 'fast',
-      }),
-    ).toEqual({ version: 1, sensing, tutors, defaultTutorId: 'fast' });
+      } as Parameters<typeof validateModelConfiguration>[0]),
+    ).toEqual({ version: 1, tutors, defaultTutorId: 'fast' });
   });
 
   it('rejects a missing default tutor', () => {
     expect(() =>
-      validateModelConfiguration({
-        sensing,
-        tutors,
-        defaultTutorId: 'missing',
-      }),
+      validateModelConfiguration({ tutors, defaultTutorId: 'missing' }),
     ).toThrow('Choose a default tutor model.');
   });
 
   it('uses role-scoped credential IDs', () => {
-    expect(credentialId('sensing', 'gemini')).toBe('sensing:gemini');
     expect(credentialId('tutor', 'gemini')).toBe('tutor:gemini');
   });
 
-  it('does not expose sensing credentials to tutors or tutor credentials to sensing', () => {
+  it('exports each tutor provider key and ignores old sensing keys', () => {
     const config = validateModelConfiguration({
-      sensing: { ...sensing, provider: 'gemini', model: 'gemini/vision' },
       tutors,
       defaultTutorId: 'fast',
     });
-    const { sensingEnv, tutorEnv } = buildRoleModelEnvironments(config, {
-      'sensing:gemini': 'sensing-secret',
-      'tutor:gemini': 'tutor-google-secret',
-      'tutor:anthropic': 'tutor-anthropic-secret',
-    });
-
-    expect(sensingEnv).toMatchObject({
-      GEMINI_API_KEY: 'sensing-secret',
-      MEMORY_MODEL: 'gemini/vision',
-    });
-    expect(sensingEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
-    expect(tutorEnv).toMatchObject({
+    expect(
+      buildTutorModelEnvironment(config, {
+        'sensing:gemini': 'sensing-secret',
+        'tutor:gemini': 'tutor-google-secret',
+        'tutor:anthropic': 'tutor-anthropic-secret',
+      }),
+    ).toEqual({
       GEMINI_API_KEY: 'tutor-google-secret',
       ANTHROPIC_API_KEY: 'tutor-anthropic-secret',
     });
-    expect(tutorEnv.GEMINI_API_KEY).not.toBe(sensingEnv.GEMINI_API_KEY);
   });
 
   it('supports an optional key for an OpenAI-compatible endpoint', () => {
     const config = validateModelConfiguration({
-      sensing: {
-        ...sensing,
-        baseUrl: 'https://inference.example.test/v1',
-      },
-      tutors: [tutors[0]],
-      defaultTutorId: 'fast',
-    });
-    const { sensingEnv } = buildRoleModelEnvironments(config, {
-      'sensing:hosted_vllm': 'optional-endpoint-key',
+      tutors: [
+        {
+          id: 'endpoint',
+          label: 'Endpoint',
+          provider: 'hosted_vllm',
+          model: 'hosted_vllm/Qwen/Chat',
+          baseUrl: 'https://inference.example.test/v1',
+        },
+      ],
+      defaultTutorId: 'endpoint',
     });
 
-    expect(sensingEnv).toMatchObject({
+    expect(
+      buildTutorModelEnvironment(config, {
+        'tutor:hosted_vllm': 'optional-endpoint-key',
+      }),
+    ).toMatchObject({
       HOSTED_VLLM_API_BASE: 'https://inference.example.test/v1',
       HOSTED_VLLM_API_KEY: 'optional-endpoint-key',
     });
   });
 
-  it('adds the internal routing prefix to raw endpoint model IDs', () => {
-    const config = validateModelConfiguration({
-      sensing: {
-        ...sensing,
-        model: 'thinkingmachines/inkling',
-      },
-      tutors: [tutors[0]],
-      defaultTutorId: 'fast',
-    });
-
-    expect(config.sensing?.model).toBe('hosted_vllm/thinkingmachines/inkling');
-  });
-
   it('routes an Inkling tutor through Tinker with a tutor-scoped key', () => {
     const config = validateModelConfiguration({
-      sensing,
       tutors: [
         {
           id: 'voice',
@@ -121,15 +100,14 @@ describe('model configuration', () => {
       ],
       defaultTutorId: 'voice',
     });
-    const { sensingEnv, tutorEnv } = buildRoleModelEnvironments(config, {
-      'tutor:tinker': 'tinker-secret',
-    });
 
     expect(config.tutors[0].model).toBe(
       'tinker/thinkingmachines/Inkling-Small:peft:262144',
     );
-    expect(tutorEnv.TINKER_API_KEY).toBe('tinker-secret');
-    expect(sensingEnv).not.toHaveProperty('TINKER_API_KEY');
+    expect(
+      buildTutorModelEnvironment(config, { 'tutor:tinker': 'tinker-secret' })
+        .TINKER_API_KEY,
+    ).toBe('tinker-secret');
   });
 });
 
@@ -140,65 +118,34 @@ describe('shared Pi model assignments', () => {
     provider: 'pi' as const,
     model: 'pi/test/vendor/model',
   };
-  const other = { ...pi, id: 'pi-fast', model: 'pi/test/fast' };
-  it('routes sensing and suggestions independently without exporting provider credentials', () => {
+  it('does not export provider credentials for Pi models', () => {
     const config = validateModelConfiguration({
-      sensing: pi,
-      tutors: [pi, other],
+      tutors: [pi],
       defaultTutorId: pi.id,
-      instantSuggestionModelId: other.id,
     });
-    const env = buildRoleModelEnvironments(config, {});
-    expect(env.sensingEnv).toEqual({ MEMORY_MODEL: pi.model });
-    expect(env.tutorEnv).toEqual({
-      COCO_INSTANT_SUGGESTION_MODEL: other.model,
-    });
-    const inherited = buildRoleModelEnvironments(
-      { ...config, instantSuggestionModelId: undefined },
-      {},
-    );
-    expect(inherited.tutorEnv.COCO_INSTANT_SUGGESTION_MODEL).toBe(pi.model);
+    expect(buildTutorModelEnvironment(config, {})).toEqual({});
   });
-  it('rejects a removed suggestion model and incomplete Pi IDs', () => {
+  it('drops incomplete Pi IDs', () => {
     expect(() =>
       validateModelConfiguration({
-        sensing: pi,
-        tutors: [pi],
-        defaultTutorId: pi.id,
-        instantSuggestionModelId: 'missing',
-      }),
-    ).toThrow('instant suggestion');
-    expect(() =>
-      validateModelConfiguration({
-        sensing: { ...pi, model: 'pi/provider' },
-        tutors: [pi],
+        tutors: [{ ...pi, model: 'pi/provider' }],
         defaultTutorId: pi.id,
       }),
-    ).toThrow('sensing');
+    ).toThrow('Add at least one tutor model.');
   });
 });
 
-it('allows chat without sensing and never inherits a legacy observer model', () => {
+it('prefers managed configuration over the legacy environment model', () => {
   const config = validateModelConfiguration({
-    sensing: null,
     tutors: [
       { id: 'chat', label: 'Chat', provider: 'pi', model: 'pi/test/chat' },
     ],
     defaultTutorId: 'chat',
   });
-  expect(config.sensing).toBeNull();
-  expect(resolveModelIds(config, { OBSERVER_MODEL: 'gemini/legacy' })).toEqual({
-    tutor: 'pi/test/chat',
-    observer: '',
-  });
-  expect(
-    buildRoleModelEnvironments(config, { 'sensing:gemini': 'old-secret' })
-      .sensingEnv,
-  ).toEqual({});
-  expect(
-    resolveModelIds(null, {
-      TUTOR_MODEL: 'openai/chat',
-      OBSERVER_MODEL: 'gemini/legacy',
-    }).observer,
-  ).toBe('gemini/legacy');
+  expect(resolveTutorModelId(config, { TUTOR_MODEL: 'openai/legacy' })).toBe(
+    'pi/test/chat',
+  );
+  expect(resolveTutorModelId(null, { TUTOR_MODEL: 'openai/chat' })).toBe(
+    'openai/chat',
+  );
 });

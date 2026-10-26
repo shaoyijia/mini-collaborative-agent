@@ -1,19 +1,19 @@
 ## `desktop`
 
-The Electron + React shell that hosts Coco's avatar, chat, and onboarding UI. It spawns the Python backend services (`sensing` and `proactive_tutor`) as child processes and communicates with them over local HTTP.
+The Electron + React shell that hosts Coco's avatar, chat, and onboarding UI. It spawns the Python tutor service (`proactive_tutor`) and the local wake-word worker as child processes and talks to them over local HTTP and stdio. Coco does not observe the screen: the only inputs are what the user types, says, pastes, or attaches.
 
 ### Local agent execution
 
 Chat runs through the bundled pi harness. It can read, edit, and write files and
 run commands in the conversation's selected working folder. The folder is a
-working directory, not a sandbox. Tool activity, interactive questions, Stop,
-context inspection, screenshots, and voice input are available in the chat.
+working directory, not a sandbox. Tool activity, interactive questions
+(`ask_user_question`), Stop, context inspection, pasted images, and voice input
+are available in the chat.
 
 Models and provider credentials are configured locally in onboarding or Settings.
 The pi runtime calls the local tutor service through an authenticated loopback
-bridge; that service uses the configured model providers and Coco tools. There is
-no hosted Coco login, gateway, training panel, or automatic personalization worker.
-The editable memory in Settings remains user-authored and local.
+bridge; that service uses the configured model providers. There is no hosted Coco
+login, gateway, or memory.
 
 Each conversation retains its folder and pi session history and owns an independent
 runtime. Multiple conversations can run concurrently; only a second run in the same
@@ -27,16 +27,13 @@ path, including when the Python service is unavailable. Changing global provider
 credentials or restarting services requires waiting for active runs; selecting a
 model or folder for an idle conversation does not stop other conversations.
 
-Sleep pauses screen sensing and wake-word capture while manual chat and background
-agent runs continue. Waking restarts sensing without resetting tutor context.
+Sleep pauses wake-word capture while chat and background agent runs continue.
 The avatar shows brief progress/completion reminders when chat is out of view.
-Its bubble, menu, and Activity panel use separate windows so opening them does not
-resize or move the pet. Chat uses normal window stacking with an optional pin.
+Its bubble and menu use separate windows so opening them does not resize or move
+the pet. Chat uses normal window stacking with an optional pin.
 
-The composer accepts local file references through Attach files or drag-and-drop.
-Screen observations are separately inspectable/removable context, and suggestions
-can be continued in chat or executed with Run with Coco. Screenshot annotation
-and the standalone model/profile settings remain available.
+The composer accepts local file references through Attach files or drag-and-drop,
+and pasted images.
 
 The native ESM runtime and SDK dependencies live under `release/app/agent` and
 `release/app/node_modules`; packaging must include `agent/**`. After changing
@@ -53,34 +50,38 @@ desktop/
 │   ├── main/                          # Electron main process
 │   │   ├── main.ts                    # Window lifecycle, IPC handlers, service orchestration
 │   │   ├── preload.ts                 # contextBridge — exposes a typed IPC API to the renderer
-│   │   ├── activity-store.ts          # Persists activity history to JSONL on disk
-│   │   ├── menu.ts                    # macOS menu bar and global shortcuts
+│   │   ├── conversation-store.ts      # Persists chat conversations to disk
+│   │   ├── model-config-store.ts      # Model connections and credentials
+│   │   ├── menu.ts                    # macOS menu bar
 │   │   ├── util.ts                    # Dev/prod URL resolver (resolveHtmlPath)
 │   │   └── services/
-│   │       ├── manager.ts             # Spawns and manages Python child processes
-│   │       ├── observation-stream.ts  # SSE client that streams observations from sensing
+│   │       ├── manager.ts             # Spawns and manages the Python child process
+│   │       ├── agent-runs.ts          # One pi harness per conversation; Stop and answers
+│   │       ├── pi-harness.ts          # Runs one agent turn against the tutor service
+│   │       ├── wake-word-service.ts   # Feeds microphone audio to the wake-word worker
 │   │       └── config.json            # Service definitions (ports, commands, env vars)
 │   │
 │   ├── renderer/                      # React 19 UI
 │   │   ├── index.tsx                  # Entry — routes to views based on ?view= query param
-│   │   ├── App.tsx                    # Default view: pet avatar + observation bubbles
+│   │   ├── App.tsx                    # Default view: pet avatar + agent bubbles
+│   │   ├── voice-recorder.ts          # Push-to-talk recording (WAV)
 │   │   └── components/
-│   │       ├── OnboardingView.tsx     # First-run setup (mode selection, AI tools, custom prompt)
-│   │       ├── SessionChatView.tsx    # Full tutor chat panel
-│   │       ├── SessionSetupView.tsx   # Task label + struggle-detection interval picker
-│   │       ├── NotificationView.tsx   # Session start/end prompts
-│   │       ├── ObservationBubble.tsx  # Tiered status bubbles on the avatar
+│   │       ├── OnboardingView.tsx     # First-run setup (name, voice, models, avatar)
+│   │       ├── SessionChatView.tsx    # Full chat panel
+│   │       ├── chat/QuestionCard.tsx  # ask_user_question card
+│   │       ├── AgentBubble.tsx        # "Working" / "Reply ready" bubble beside the avatar
+│   │       ├── WakeWordCaptureView.tsx # Hidden microphone capture for the wake word
 │   │       ├── PetSprite.tsx          # Animated avatar sprite with mood states
-│   │       ├── observation-types.ts   # Shared types, status-to-mood mapping, AI tool catalog
-│   │       └── activity-rollup.ts    # Activity panel analytics helpers
+│   │       └── agent-types.ts         # Shared chat, tool-call, and pet types
 │   │
 │   └── __tests__/                     # Jest + Testing Library tests
 │
+├── release/app/agent/                 # pi runtime + ask-user extension (native ESM)
 ├── .erb/                              # Electron React Boilerplate tooling
 │   ├── configs/                       # Webpack configs (main, renderer, preload, DLL)
 │   └── scripts/                       # Build helpers (Python bundling and service copy)
 │
-├── assets/                            # App icons and pet sprite images
+├── assets/                            # App icons, pet sprite images, wake-word model
 └── release/
     ├── app/                           # electron-builder app directory (prod entry point)
     └── build/                         # Packaged installers (DMG, NSIS, AppImage)
@@ -92,31 +93,26 @@ A single React bundle is loaded into several `BrowserWindow` instances, each rou
 
 | Window | `?view=` | Purpose |
 |---|---|---|
-| **Avatar** | _(default)_ | Transparent, always-on-top pet sprite with observation bubbles |
+| **Avatar** | _(default)_ | Transparent, always-on-top pet sprite |
+| **Avatar bubble** | `avatar-bubble` | Agent progress and reply-ready reminders beside the pet |
+| **Avatar menu** | `avatar-menu` | The pet's ••• menu |
 | **Onboarding** | `onboarding` | First-run configuration wizard |
-| **Chat** | `session` | Full tutor conversation panel |
-| **Session Setup** | `session-setup` | Task label and check-in interval |
-| **Notification** | `notification` | Session prompts and system warnings |
-
-### Observation bubbles
-
-The avatar surfaces observations from the sensing service in three tiers:
-
-- **Tier 1** (`progress`, `observing`) — informational phrase only, no action needed
-- **Tier 2** (`stuck`, `mistake`, `inefficient`, `ai_struggle`, `discernment_opportunity`) — actionable, with a one-click "Help me with this" button
-- **Tier 3** (tutor guidance) — full suggestion preview with a link to open the chat panel
+| **Chat** | `session` | Full conversation panel |
+| **Image preview** | `image-preview` | Full-display preview of chat images |
+| **Wake-word capture** | `wake-word-capture` | Hidden 1 px window that streams microphone audio |
 
 ### How the main process orchestrates everything
 
-1. On first launch, collects separate sensing and tutor provider/model settings;
-   credentials are stored in a plaintext configuration file protected with
-   owner-only permissions (`chmod 600`) in Electron's user-data directory
+1. On first launch, collects the chat model settings; credentials are stored in a
+   plaintext configuration file protected with owner-only permissions
+   (`chmod 600`) in Electron's user-data directory
 2. Checks whether onboarding is complete; if not, opens the onboarding window
-3. `ServiceManager` spawns the Python backends (`sensing :8080`, `tutor :8081`)
-   with role-specific credentials; development `.env` remains supported
-4. An SSE client (`ObservationStream`) connects to `sensing` and forwards observation events to the avatar renderer via IPC
-5. When a Tier-2 bubble appears, the main process precomputes a tutor suggestion in the background so the response is instant when clicked
-6. Chat messages flow through `sensing/observe` (screen context) → `tutor/events` (guidance) → renderer
+3. `ServiceManager` spawns the tutor service (`:8081`) with the configured
+   credentials; development `.env` remains supported
+4. Chat and voice messages go to `runAgentTurn`, which runs one pi agent turn
+   through the tutor service and streams the result to the chat renderer
+5. When the turn ends, the agent waits for the user; if the chat is out of view,
+   the avatar shows a reply-ready bubble
 
 ### Scripts
 
@@ -124,7 +120,7 @@ The avatar surfaces observations from the sensing service in three tiers:
 |---|---|
 | `npm start` | Dev mode — webpack-dev-server on `:1212` + Electron with hot reload |
 | `npm run build` | Production webpack build (main + renderer) |
-| `npm run build:services` | Bundle both Python executables into one shared `service-dist/coco-services/` runtime |
+| `npm run build:services` | Bundle the Python executables (`tutor-server`, `wake-word-worker`) into one shared `service-dist/coco-services/` runtime |
 | `npm run package` | Full production build + electron-builder (DMG / NSIS / AppImage) |
 | `npm test` | Run Jest unit tests |
 
@@ -212,6 +208,5 @@ credentials, if any, are managed outside the app).
 
 Native text/image chat and Pi's file/command tools do not require Python services.
 When the local Coco service is running, its context and tools remain available.
-Screen sensing, proactive suggestions, and voice transcription still require the
-local services and their model configuration. Native login alone does not configure
+Voice transcription still requires the local service and its model configuration. Native login alone does not configure
 those services. Native-only users can finish onboarding after choosing a Pi model.

@@ -25,36 +25,22 @@ describe('onboarding window', () => {
   });
 });
 
-it('allows continuing onboarding without screen permissions', async () => {
+it('goes from your name straight to voice, with no permissions step', async () => {
   window.history.pushState({}, '', '/?view=onboarding');
+  const invoke = jest.fn(async () => null);
   (window as any).electron = {
-    ipcRenderer: {
-      invoke: jest.fn(async (channel) =>
-        channel === 'get-system-permissions'
-          ? {
-              missing: [
-                { target: 'screen-recording' },
-                { target: 'accessibility' },
-              ],
-            }
-          : null,
-      ),
-      sendMessage: jest.fn(),
-    },
+    ipcRenderer: { invoke, sendMessage: jest.fn() },
   };
   const view = render(<OnboardingView />);
+  expect(screen.getByText('1 / 5')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   fireEvent.change(document.getElementById('ob-user-name')!, {
     target: { value: 'Alex' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  fireEvent.click(
-    await screen.findByRole('button', {
-      name: 'Continue without screen access',
-    }),
-  );
   expect(
     await screen.findByRole('heading', { name: 'Hey Coco' }),
   ).toBeInTheDocument();
+  expect(invoke).not.toHaveBeenCalledWith('get-system-permissions');
   view.unmount();
 });

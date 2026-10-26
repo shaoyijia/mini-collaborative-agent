@@ -1,5 +1,4 @@
-import type { LLMCallMetrics, TutorToolCall } from '../observation-types';
-import type { ChatSuggestion } from '../../../shared/chat-suggestion';
+import type { LLMCallMetrics, TutorToolCall } from '../agent-types';
 import type { AgentActivity } from '../../../shared/agent-execution';
 
 export interface Guidance {
@@ -24,13 +23,11 @@ export interface ChatMessage {
   role: 'user' | 'tutor';
   text: string;
   images?: string[];
-  screenContext?: string;
   isError?: boolean;
-  /** Stable id for tutor messages so thumbs feedback can reference them. */
+  /** Stable id for tutor messages. */
   id?: string;
-  /** When the message was appended — lets latency_s capture time-to-rate. */
+  /** When the message was appended. */
   ts?: number;
-  observerMetrics?: LLMCallMetrics | null;
   tutorMetrics?: LLMCallMetrics | null;
   toolCalls?: TutorToolCall[];
   /** Correlates incremental main-process events with this pending reply. */
@@ -39,11 +36,7 @@ export interface ChatMessage {
   /** Exact request payload retained so an error can be retried in place. */
   retryText?: string;
   retryImages?: string[];
-  retryRequestKind?: 'chat' | 'practice_suggestions';
-  retryHotkeyImages?: string[];
-  /** Set when Coco proactively suggested this rather than replying. */
-  suggestion?: ChatSuggestion;
-  folded?: boolean;
+  retryRequestKind?: 'chat';
 }
 
 export interface SavedConversation {
@@ -69,7 +62,6 @@ export interface ServiceHealth {
   connected: boolean;
   status: string;
   detail?: string;
-  totalActions?: number;
   modelAssessment?: {
     status: 'verified' | 'failed' | 'legacy_unassessed' | 'not_configured';
     detail: string;
@@ -78,29 +70,12 @@ export interface ServiceHealth {
 
 export interface ServiceHealthView {
   checkedAt: number;
-  sensing: ServiceHealth;
   tutor: ServiceHealth;
 }
 
 export interface SleepingServiceHealthView {
   checkedAt: number;
   sleeping: true;
-}
-
-export type SystemPermissionTarget =
-  | 'accessibility'
-  | 'input-monitoring'
-  | 'screen-recording';
-
-export interface MissingSystemPermission {
-  target: SystemPermissionTarget;
-  label: string;
-  actionLabel: string;
-  explanation: string;
-}
-
-export interface SystemPermissionHealth {
-  missing: MissingSystemPermission[];
 }
 
 export interface ConnectionTestStatus {

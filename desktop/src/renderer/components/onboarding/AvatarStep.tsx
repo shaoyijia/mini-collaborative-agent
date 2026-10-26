@@ -63,7 +63,7 @@ export default function AvatarStep({
       </p>
       <p className="coco-setup-note">
         You can reveal or hide the avatar later in Settings. This does not
-        change observation or voice activation.
+        change voice activation.
       </p>
     </>
   );

@@ -8,20 +8,12 @@ import {
 } from 'electron';
 
 export type Channels =
-  | 'session-invite-accepted'
-  | 'notification-response'
   | 'reveal-agent-reply'
   | 'set-chat-window-pinned'
   | 'get-chat-window-pin-state'
   | 'chat-window-pin-state'
   | 'view-agent-reply'
   | 'toggle-sleep'
-  | 'session-invite-shown'
-  | 'session-invite-revealed'
-  | 'session-invite-response'
-  | 'session-invite-clear'
-  | 'session-invite-busy'
-  | 'session-invite'
   | 'quit'
   | 'open-avatar-menu'
   | 'close-avatar-menu'
@@ -34,13 +26,6 @@ export type Channels =
   | 'avatar-menu-open'
   | 'avatar-menu-closed'
   | 'avatar-menu-action'
-  | 'avatar-history-size'
-  | 'avatar-history-pointer'
-  | 'avatar-history-placement'
-  | 'avatar-history-painted'
-  | 'avatar-history-open'
-  | 'avatar-history-closed'
-  | 'avatar-history-close'
   | 'avatar-dragging'
   | 'avatar-bubble-state'
   | 'avatar-bubble-size'
@@ -51,31 +36,19 @@ export type Channels =
   | 'agent-working'
   | 'agent-work-ended'
   | 'agent-reply-ready'
-  | 'activity-history-changed'
   | 'pi-provider'
   | 'open-avatar-actions-menu'
   | 'quit-from-avatar'
-  | 'proactive-suggestion-open-state'
-  | 'fit-notification-height'
   | 'avatar-visibility-changed'
-  | 'chat-suggestion'
-  | 'reveal-chat-suggestion'
   | 'get-agent-workspace'
   | 'choose-agent-workspace'
   | 'get-agent-context'
   | 'answer-agent-question'
   | 'stop-agent-run'
-  | 'get-supported-modes'
-  | 'get-system-permissions'
-  | 'open-system-permissions'
   | 'close-chat-window'
   | 'quit-from-onboarding'
   | 'open-main-window'
   | 'close-main-window'
-  | 'notification'
-  | 'notification-hover-state'
-  | 'set-notification-expanded'
-  | 'observation-update'
   | 'system-suspend'
   | 'shell-show-item-in-finder'
   | 'download-benchmark-file'
@@ -90,12 +63,7 @@ export type Channels =
   | 'get-chat-content-zoom-factor'
   | 'chat-content-zoom-factor'
   | 'open-chat-settings'
-  // Proactive session flow
   | 'session-active'
-  | 'show-session-setup'
-  | 'session-setup-init'
-  | 'proactive-session-confirmed'
-  | 'proactive-session-end-confirmed'
   // Local chat (SessionChatView) — session context + user turns
   | 'session-init'
   | 'start-new-chat-session'
@@ -105,8 +73,6 @@ export type Channels =
   | 'get-chat-conversations'
   | 'save-chat-conversation'
   | 'resume-chat-conversation'
-  // Hot-key screen capture → preview thumbnail in the chat input bar
-  | 'hotkey-capture'
   // Full-display image preview shared by pending and sent chat attachments
   | 'open-image-preview'
   | 'image-preview'
@@ -114,8 +80,6 @@ export type Channels =
   | 'close-image-preview'
   | 'save-image-annotation'
   | 'image-annotation-saved'
-  // Renderer → main: chat's hot-key listener is mounted; flush buffered captures
-  | 'hotkey-capture-ready'
   // Onboarding
   | 'onboarding-complete'
   | 'model-configuration-complete'
@@ -128,39 +92,10 @@ export type Channels =
   | 'set-chat-model'
   // Settings (post-onboarding profile edits)
   | 'save-profile'
-  | 'update-settings'
   | 'update-avatar-visibility'
-  // Long-term agent memory (view/edit)
-  | 'get-memory'
-  | 'save-memory'
-  // Observation history
-  | 'toggle-observation-history'
-  | 'open-observation-history'
-  | 'activity-history-visibility'
   | 'avatar-renderer-ready'
-  // Activity panel hydrates persisted history from main on open
-  | 'get-activity-history'
-  // Persist an observation's proactive-support engagement + revealed content
-  | 'activity-support-engaged'
-  // Persist support content/rating independently of initial engagement
-  | 'activity-support-rated'
   // Renderer asks main to resize the avatar window to fit current content
   | 'resize-avatar-window'
-  // Tier 3: tutor guidance routed to bubble when webapp is hidden
-  | 'tutor-notification'
-  // Tier 2: user clicked "Help me with this" in the bubble
-  | 'help-me-with-this'
-  | 'open-notification-suggestion'
-  // Instant suggestion: fetch the precomputed suggestion for an observation
-  | 'get-instant-suggestion'
-  // Instant suggestion: act on a revealed suggestion (copy / open tool)
-  | 'suggestion-action'
-  // Continue a suggestion in Coco's chat or pre-fill its composer
-  | 'chat-about-suggestion'
-  // Forwarded to webapp renderer to signal a help-request context
-  | 'help-request'
-  // Explicit user reaction (bubble engage/dismiss) → sensing /feedback
-  | 'training-feedback'
   | 'get-coco-sleep-mode'
   | 'set-coco-sleep-mode'
   | 'coco-sleep-mode-changed'

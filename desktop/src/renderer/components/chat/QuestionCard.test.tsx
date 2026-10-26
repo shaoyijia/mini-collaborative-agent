@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import QuestionCard from './QuestionCard';
-import type { TutorToolCall } from '../observation-types';
+import type { TutorToolCall } from '../agent-types';
 
 jest.mock('./MessageContent', () => ({
   TutorMessage: ({ text }: { text: string }) => <span>{text}</span>,

@@ -16,13 +16,7 @@ describe('shared desktop typography', () => {
   });
 
   it('uses body typography for chat messages and the composer', () => {
-    [
-      'userBubble',
-      'tutorBubble',
-      'errBubble',
-      'textarea',
-      'memoryArea',
-    ].forEach((name) => {
+    ['userBubble', 'tutorBubble', 'errBubble', 'textarea'].forEach((name) => {
       expect(S[name].fontSize).toBe('var(--coco-text-body)');
     });
     expect(S.userBubble.lineHeight).toBe('var(--coco-leading-body)');
@@ -31,19 +25,15 @@ describe('shared desktop typography', () => {
   });
 
   it('uses shared control sizes without enlarging the entire window', () => {
-    [
-      'sendBtn',
-      'finishTaskBtn',
-      'newSessionBtn',
-      'customInput',
-      'screenTaskBtn',
-    ].forEach((name) => {
-      expect(S[name].fontSize).toBe('var(--coco-text-control)');
-    });
+    ['sendBtn', 'finishTaskBtn', 'newSessionBtn', 'customInput'].forEach(
+      (name) => {
+        expect(S[name].fontSize).toBe('var(--coco-text-control)');
+      },
+    );
     expect(S.iconBtn.height).toBe('var(--coco-control-height)');
     expect(S.newSessionBtn.height).toBeGreaterThanOrEqual(28);
     expect(tokens).toContain('--coco-control-height: 36px');
-    expect(S.hotkeyHint.fontSize).toBe('var(--coco-text-secondary)');
+    expect(S.voiceHint.fontSize).toBe('var(--coco-text-secondary)');
     expect(S.metricRow.fontSize).toBe('var(--coco-text-caption)');
   });
 
@@ -61,16 +51,13 @@ describe('shared desktop typography', () => {
     expect(css('App.css')).not.toMatch(/font(?:-family)?:[^;]*-apple-system/);
   });
 
-  it('keeps composer actions below a full-width input and distinguishes prompt cards', () => {
+  it('keeps composer actions below a full-width input', () => {
     expect(S.textarea.width).toBe('100%');
     expect(S.textarea.border).toBe('none');
     expect(S.composerActions.alignItems).toBe('center');
     expect(S.composerActions.flexWrap).toBe('wrap');
     expect(S.micBtn.width).toBe(S.sendBtn.width);
     expect(S.micBtn.height).toBe(S.sendBtn.height);
-    expect(S.secondaryPromptBtn.background).toBe('var(--coco-color-surface)');
-    expect(S.screenTaskBtn.background).toBe('var(--coco-color-accent-soft)');
-    expect(S.secondaryPromptBtn.fontSize).toBe(S.screenTaskBtn.fontSize);
     expect(S.finishTaskBtn.background).toBe('var(--coco-color-primary)');
     expect(S.finishTaskBtn.color).toBe('var(--coco-color-surface)');
   });

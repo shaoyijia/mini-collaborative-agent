@@ -12,7 +12,6 @@ export default function LocalModelSettings() {
       <h2>Models &amp; providers</h2>
       <p>
         Connect models for Coco chat through Pi or add another model service.
-        Screen sensing is optional.
       </p>
       <ModelsStep {...models.modelProps} />
       <button

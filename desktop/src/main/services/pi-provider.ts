@@ -66,10 +66,7 @@ export async function startPiInferenceBridge(): Promise<void> {
   app.once('will-quit', () => bridge.close());
 }
 
-export async function validatePiModel(
-  modelId: string,
-  vision = false,
-): Promise<void> {
+export async function validatePiModel(modelId: string): Promise<void> {
   const [, provider, ...parts] = modelId.split('/');
   const { runtime } = await getPiClient();
   const model = runtime.getModel(provider, parts.join('/'));
@@ -77,8 +74,6 @@ export async function validatePiModel(
     throw new Error(
       'Connect the Pi provider and select an available model first.',
     );
-  if (vision && !model.input.includes('image'))
-    throw new Error('Choose a vision-capable Pi model for sensing.');
 }
 
 export function registerPiProvider(

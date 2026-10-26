@@ -7,20 +7,14 @@ import {
   type ActiveVoiceRecorder,
   type VoiceRecorderStatus,
 } from '../voice-recorder';
-import type { LLMCallMetrics, TutorToolCall } from './observation-types';
-import { defaultMode, normalizeSupportedModes } from '../../shared/agent-modes';
-import type { AgentModeId } from '../../shared/agent-modes';
+import type { LLMCallMetrics, TutorToolCall } from './agent-types';
 import type { AgentActivity } from '../../shared/agent-execution';
-import type { ChatSuggestion } from '../../shared/chat-suggestion';
-import { suggestionMessage } from './chat/MessageContent';
 import { copyableMessageText, makeMessageId } from './chat/message-format';
 import type {
   ChatMessage,
   SavedConversation,
   ServiceHealthView,
   SleepingServiceHealthView,
-  SystemPermissionTarget,
-  SystemPermissionHealth,
   WakeWordSettingsInfo,
 } from './chat/types';
 import { S } from './chat/styles';
@@ -32,9 +26,7 @@ import ConversationSidebar from './chat/ConversationSidebar';
 import HealthSettings from './chat/HealthSettings';
 import PreferencesSettings from './chat/PreferencesSettings';
 import LocalModelSettings from './chat/LocalModelSettings';
-import LocalProfileSettings from './chat/LocalProfileSettings';
 import LocalModelPicker from './chat/LocalModelPicker';
-import MemorySettings from './chat/MemorySettings';
 
 export { ToolCallCard } from './chat/ToolCallCard';
 
@@ -42,13 +34,8 @@ export default function SessionChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const [pendingContextLabel, setPendingContextLabel] = useState<string | null>(
-    null,
-  );
   const [replyToReveal, setReplyToReveal] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [discussingSuggestion, setDiscussingSuggestion] = useState(false);
-  const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const [voiceState, setVoiceState] = useState<
     'idle' | 'requesting' | VoiceRecorderStatus
   >('idle');
@@ -84,26 +71,12 @@ export default function SessionChatView() {
   const [historyError, setHistoryError] = useState(false);
   const [conversations, setConversations] = useState<SavedConversation[]>([]);
   const [reviewing, setReviewing] = useState<SavedConversation | null>(null);
-  const [profile, setProfile] = useState<{
-    scenario: string;
-    aiTools: string[];
-    hideAvatar: boolean;
-  }>({
-    scenario: 'everyday_support',
-    aiTools: [],
-    hideAvatar: false,
-  });
   const [currentTutorModelId, setCurrentTutorModelId] = useState('');
   const [serviceHealth, setServiceHealth] = useState<ServiceHealthView | null>(
     null,
   );
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState('');
-  const [systemPermissionHealth, setSystemPermissionHealth] =
-    useState<SystemPermissionHealth>({ missing: [] });
-  const [permissionOpening, setPermissionOpening] =
-    useState<SystemPermissionTarget | null>(null);
-  const [permissionError, setPermissionError] = useState('');
   const [cocoSleeping, setCocoSleeping] = useState(false);
   const [cocoSleepModeKnown, setCocoSleepModeKnown] = useState(false);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
@@ -128,27 +101,10 @@ export default function SessionChatView() {
   }, []);
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [avatarSaveError, setAvatarSaveError] = useState('');
-  // Long-term agent memory (loaded from / saved to the tutor server).
-  const [memoryDraft, setMemoryDraft] = useState('');
-  const [memoryLoaded, setMemoryLoaded] = useState('');
-  const [memoryFlash, setMemoryFlash] = useState(false);
-  // Current thumbs vote per tutor message, keyed by message id. Users may
-  // replace it by choosing the opposite rating.
-  const [ratings, setRatings] = useState<Record<string, 'up' | 'down'>>({});
   const [copiedMessageKey, setCopiedMessageKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const pendingHotkeyImagesRef = useRef<Set<string>>(new Set());
   const sessionIdRef = useRef<string | null>(null);
   const preserveDraftRef = useRef(false);
-  const pendingContextRef = useRef<string | null>(null);
-  const pendingScreenContextRef = useRef<string | null>(null);
-  const [pendingScreenContext, setPendingScreenContextState] = useState<
-    string | null
-  >(null);
-  const setPendingScreenContext = useCallback((value: string | null) => {
-    pendingScreenContextRef.current = value;
-    setPendingScreenContextState(value);
-  }, []);
   const messagesRef = useRef<ChatMessage[]>([]);
   const problemRef = useRef('');
   const cocoSleepingRef = useRef(false);
@@ -207,13 +163,7 @@ export default function SessionChatView() {
           applyCocoSleepMode(true);
           return;
         }
-        if (
-          !result ||
-          !('sensing' in result) ||
-          !('tutor' in result) ||
-          !result.sensing ||
-          !result.tutor
-        ) {
+        if (!result || !('tutor' in result) || !result.tutor) {
           throw new Error('No health response received.');
         }
         if (!cocoSleepingRef.current) setServiceHealth(result);
@@ -228,46 +178,6 @@ export default function SessionChatView() {
       }
     },
     [applyCocoSleepMode],
-  );
-
-  const refreshSystemPermissions = useCallback(async () => {
-    try {
-      const result = (await window.electron?.ipcRenderer.invoke(
-        'get-system-permissions',
-      )) as SystemPermissionHealth | undefined;
-      if (result && Array.isArray(result.missing)) {
-        setSystemPermissionHealth(result);
-      }
-    } catch {
-      // Permission health is advisory. Leave the section hidden if macOS
-      // cannot report a status instead of showing a false warning.
-    }
-  }, []);
-
-  const openSystemPermission = useCallback(
-    async (target: SystemPermissionTarget) => {
-      setPermissionOpening(target);
-      setPermissionError('');
-      try {
-        const result = (await window.electron?.ipcRenderer.invoke(
-          'open-system-permissions',
-          target,
-        )) as { success?: boolean; error?: string } | undefined;
-        if (!result?.success) {
-          throw new Error(
-            result?.error || 'Could not open macOS System Settings.',
-          );
-        }
-        await refreshSystemPermissions();
-      } catch (error) {
-        setPermissionError(
-          error instanceof Error ? error.message : String(error),
-        );
-      } finally {
-        setPermissionOpening(null);
-      }
-    },
-    [refreshSystemPermissions],
   );
 
   // Keep each active conversation on disk. A short debounce avoids a write for
@@ -288,33 +198,6 @@ export default function SessionChatView() {
     return () => window.clearTimeout(timeout);
   }, [messages, problem]);
 
-  // Rate a tutor message. Routed main → sensing /feedback → feedback.jsonl,
-  // same pipeline as the bubble reactions.
-  const rateMessage = (m: ChatMessage, dir: 'up' | 'down') => {
-    if (!m.id || ratings[m.id] === dir) return;
-    const previousRating = ratings[m.id];
-    setRatings((prev) => ({ ...prev, [m.id as string]: dir }));
-    const observationId = m.suggestion?.observationId;
-    if (observationId) {
-      // Rate the suggestion itself too, as the pop-up does, so History shows it.
-      window.electron?.ipcRenderer.sendMessage('activity-support-rated', {
-        observationId,
-        rating: dir,
-        ratedAt: Math.floor(Date.now() / 1000),
-      });
-    }
-    window.electron?.ipcRenderer.sendMessage('training-feedback', {
-      kind: dir === 'up' ? 'thumbs_up' : 'thumbs_down',
-      previous_kind: previousRating ? `thumbs_${previousRating}` : null,
-      surface: 'chat',
-      ...(observationId ? { observation_id: observationId } : {}),
-      message_id: m.id,
-      session_id: sessionIdRef.current,
-      latency_s: m.ts ? (Date.now() - m.ts) / 1000 : null,
-      text: m.text,
-    });
-  };
-
   const copyMessage = async (message: ChatMessage, key: string) => {
     const text = copyableMessageText(message).trim();
     if (!text) return;
@@ -332,13 +215,6 @@ export default function SessionChatView() {
   const openImagePreview = (imageDataUrl: string) => {
     window.electron?.ipcRenderer.sendMessage('open-image-preview', {
       imageDataUrl,
-    });
-  };
-
-  const openImageAnnotator = (imageDataUrl: string) => {
-    window.electron?.ipcRenderer.sendMessage('open-image-preview', {
-      imageDataUrl,
-      editable: true,
     });
   };
 
@@ -365,7 +241,6 @@ export default function SessionChatView() {
           stopped?: boolean;
           guidance?: string;
           error?: string;
-          observerMetrics?: LLMCallMetrics | null;
           llm_metrics?: LLMCallMetrics | null;
           tool_calls?: TutorToolCall[];
         };
@@ -434,7 +309,6 @@ export default function SessionChatView() {
                 stopped: event.stopped,
                 id: message.id ?? makeMessageId(),
                 ts: Date.now(),
-                observerMetrics: event.observerMetrics ?? null,
                 tutorMetrics: event.llm_metrics ?? null,
                 toolCalls: event.tool_calls ?? message.toolCalls ?? [],
                 isStreaming: false,
@@ -467,9 +341,6 @@ export default function SessionChatView() {
       images: string[],
       displayText?: string,
       isRetry = false,
-      requestKind: 'chat' | 'practice_suggestions' = 'chat',
-      hotkeyImages: string[] = [],
-      screenContext?: string,
     ) => {
       setSending(true);
       scrollToBottom();
@@ -481,9 +352,6 @@ export default function SessionChatView() {
           displayText,
           isRetry,
           images,
-          requestKind,
-          hotkeyImages,
-          screenContext,
           sessionId: targetSessionId,
         })
         .catch((error: Error) => ({ error: error.message }));
@@ -493,7 +361,6 @@ export default function SessionChatView() {
             streamed?: boolean;
             guidance?: string;
             error?: string;
-            observerMetrics?: LLMCallMetrics | null;
             tutorMetrics?: LLMCallMetrics | null;
             toolCalls?: TutorToolCall[];
           }
@@ -511,7 +378,6 @@ export default function SessionChatView() {
                   isStreaming: false,
                   id: r.error ? undefined : makeMessageId(),
                   ts: r.error ? undefined : Date.now(),
-                  observerMetrics: r.observerMetrics ?? null,
                   tutorMetrics: r.tutorMetrics ?? null,
                   toolCalls: r.toolCalls ?? [],
                 }
@@ -587,50 +453,25 @@ export default function SessionChatView() {
   // Core send: append the user turn and an empty tutor turn immediately. The
   // latter is filled by chat-stream-event updates while the IPC request runs.
   const sendMessage = useCallback(
-    async (
-      text: string,
-      images: string[],
-      hotkeyImages: string[] = [],
-      requestKind: 'chat' | 'practice_suggestions' = 'chat',
-    ) => {
+    async (text: string, images: string[]) => {
       const trimmed = text.trim();
       if (!trimmed && images.length === 0) return;
       const requestId = makeMessageId();
-      const pendingContext = pendingContextRef.current;
-      const screenContext = pendingScreenContextRef.current ?? undefined;
-      const userText = pendingContext
-        ? `${pendingContext}\n\nThe user now says:\n${trimmed}`
-        : trimmed;
       setMessages((m) => [
         ...m,
-        { role: 'user', text: trimmed, images, screenContext },
+        { role: 'user', text: trimmed, images },
         {
           role: 'tutor',
           text: '',
           requestId,
           isStreaming: true,
           toolCalls: [],
-          screenContext,
-          retryText: userText,
+          retryText: trimmed,
           retryImages: images,
-          retryRequestKind: requestKind,
-          retryHotkeyImages: hotkeyImages,
+          retryRequestKind: 'chat',
         },
       ]);
-      pendingContextRef.current = null;
-      setPendingContextLabel(null);
-      setPendingScreenContext(null);
-      setDiscussingSuggestion(false);
-      await submitTutorRequest(
-        requestId,
-        userText,
-        images,
-        trimmed,
-        false,
-        requestKind,
-        hotkeyImages,
-        screenContext,
-      );
+      await submitTutorRequest(requestId, trimmed, images, trimmed, false);
     },
     [submitTutorRequest],
   );
@@ -649,7 +490,6 @@ export default function SessionChatView() {
         message.retryImages ??
         (askedWith?.role === 'user' ? askedWith.images : undefined) ??
         [];
-      const hotkeyImages = message.retryHotkeyImages ?? [];
       setMessages((current) =>
         current.map((item) =>
           item.requestId === previousRequestId
@@ -672,9 +512,6 @@ export default function SessionChatView() {
         images,
         undefined,
         true,
-        message.retryRequestKind ?? 'chat',
-        hotkeyImages,
-        message.screenContext,
       );
     },
     [sending, startingNewSession, submitTutorRequest],
@@ -736,16 +573,10 @@ export default function SessionChatView() {
           }
           sessionIdRef.current = sessionId;
           setMessages([]);
-          setRatings({});
           setSending(false);
           if (!preserveDraft) {
             setInput('');
             setPendingImages([]);
-            pendingHotkeyImagesRef.current.clear();
-            setPendingScreenContext(null);
-            setDiscussingSuggestion(false);
-            pendingContextRef.current = null;
-            setPendingContextLabel(null);
           }
           window.electron?.ipcRenderer
             .invoke('get-chat-conversations')
@@ -757,25 +588,7 @@ export default function SessionChatView() {
                 (candidate) => candidate.sessionId === sessionId,
               );
               if (!conversation) return;
-              const savedSuggestionIds = new Set(
-                conversation.messages
-                  .map((m) => m.suggestion?.observationId)
-                  .filter(Boolean),
-              );
-              setMessages((current) =>
-                current.length === 0
-                  ? conversation.messages
-                  : [
-                      ...conversation.messages,
-                      // A suggestion delivered before the restore finished may
-                      // already be in the saved copy.
-                      ...current.filter(
-                        (m) =>
-                          !m.suggestion?.observationId ||
-                          !savedSuggestionIds.has(m.suggestion.observationId),
-                      ),
-                    ],
-              );
+              setMessages((current) => [...conversation.messages, ...current]);
               // A reply started before this window opened is still streaming;
               // its remaining events update the restored message in place.
               if (conversation.messages.some((m) => m.isStreaming)) {
@@ -801,7 +614,7 @@ export default function SessionChatView() {
     };
   }, []);
 
-  // Keep chat context and the selected model in sync with the saved profile.
+  // Keep the selected model and avatar setting in sync with saved settings.
   useEffect(() => {
     const ipc = window.electron?.ipcRenderer;
     if (!ipc) return undefined;
@@ -814,22 +627,10 @@ export default function SessionChatView() {
         return undefined;
       })
       .catch(() => {});
-
-    Promise.all([ipc.invoke('get-profile'), ipc.invoke('get-supported-modes')])
-      .then(([p, configuredModes]: any[]) => {
-        const nextModes = normalizeSupportedModes(configuredModes);
-        const savedScenario =
-          typeof p?.tutorScenario === 'string' ? p.tutorScenario : '';
-        const nextScenario = nextModes.includes(savedScenario as AgentModeId)
-          ? savedScenario
-          : defaultMode(nextModes);
-        const next = {
-          scenario: nextScenario,
-          aiTools: [],
-          hideAvatar: p?.hideAvatar === true,
-        };
-        setProfile(next);
-        setEditHideAvatar(next.hideAvatar);
+    ipc
+      .invoke('get-profile')
+      .then((p: any) => {
+        setEditHideAvatar(p?.hideAvatar === true);
         return undefined;
       })
       .catch(() => {});
@@ -853,7 +654,6 @@ export default function SessionChatView() {
             'Could not update desktop avatar visibility.',
         );
       }
-      setProfile((current) => ({ ...current, hideAvatar }));
     } catch (error) {
       setEditHideAvatar(previousValue);
       setAvatarSaveError(
@@ -863,20 +663,6 @@ export default function SessionChatView() {
       setAvatarSaving(false);
     }
   };
-
-  // Load the agent memory whenever the Settings panel is opened.
-  useEffect(() => {
-    if (!showSettings) return;
-    void refreshSystemPermissions();
-    window.electron?.ipcRenderer
-      .invoke('get-memory')
-      .then((r: any) => {
-        const mem = String(r?.memory ?? '');
-        setMemoryDraft(mem);
-        setMemoryLoaded(mem);
-      })
-      .catch(() => {});
-  }, [refreshSystemPermissions, showSettings]);
 
   useEffect(
     () => subscribeCocoSleepMode(applyCocoSleepMode),
@@ -989,213 +775,6 @@ export default function SessionChatView() {
     }
   }, [showSettings]);
 
-  const saveMemory = async () => {
-    const res = await window.electron?.ipcRenderer.invoke('save-memory', {
-      memory: memoryDraft,
-    });
-    if ((res as { success?: boolean })?.success) {
-      setMemoryLoaded(memoryDraft);
-      setMemoryFlash(true);
-      setTimeout(() => setMemoryFlash(false), 1500);
-    }
-  };
-  const memoryDirty = memoryDraft !== memoryLoaded;
-
-  // Context from proactive support. Ordinary "Help me with this" requests are
-  // sent immediately; "Ask Coco about it" stages context for the next message.
-  useEffect(() => {
-    const cleanup = window.electron?.ipcRenderer.on(
-      'help-request',
-      (data: any) => {
-        const {
-          rawObservation,
-          phrase,
-          label,
-          deferUntilUserMessage,
-          draft,
-          initialInput,
-          suggestion,
-          screenObservation,
-        } = (data ?? {}) as {
-          rawObservation?: string;
-          phrase?: string;
-          label?: string;
-          deferUntilUserMessage?: boolean;
-          draft?: string;
-          initialInput?: string;
-          suggestion?: ChatSuggestion;
-          screenObservation?: string;
-        };
-        const seed = (rawObservation || phrase || '').trim();
-        const screenContext = screenObservation?.trim();
-        if (screenContext) setPendingScreenContext(screenContext);
-        if (seed || draft || screenContext) {
-          setActivePage('chat');
-          setShowSettings(false);
-        }
-        if (draft || initialInput !== undefined) {
-          setInput(initialInput ?? draft ?? '');
-          setComposerFocusRequest((n) => n + 1);
-          if (initialInput !== undefined && !deferUntilUserMessage) return;
-        }
-        if (seed && !deferUntilUserMessage && sending) {
-          // Coco is still replying, so this can't go out yet. Leave it in the
-          // message box for the user to send, rather than as hidden context.
-          setInput(seed);
-          setComposerFocusRequest((n) => n + 1);
-          return;
-        }
-        if (seed && deferUntilUserMessage) {
-          pendingContextRef.current = seed;
-          if (suggestion) {
-            // Continue from the suggestion the user just read. Its context is
-            // still sent with their first message.
-            const { observationId } = suggestion;
-            setMessages((current) =>
-              observationId &&
-              current.some((m) => m.suggestion?.observationId === observationId)
-                ? current.map((m) =>
-                    m.suggestion?.observationId === observationId
-                      ? { ...m, folded: false }
-                      : m,
-                  )
-                : [...current, suggestionMessage(suggestion, false)],
-            );
-            setPendingContextLabel(null);
-            setDiscussingSuggestion(true);
-            setComposerFocusRequest((n) => n + 1);
-            scrollToBottom();
-            return;
-          }
-          setPendingContextLabel(
-            (phrase || label || 'Tutor suggestion').trim(),
-          );
-          return;
-        }
-        if (seed) sendMessage(seed, []);
-      },
-    );
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, [sendMessage, sending, scrollToBottom, setPendingScreenContext]);
-
-  // Proactive suggestions from main arrive as Coco messages: unfolded when the
-  // chat was open, folded when they first appeared as a pop-up. "Chat about
-  // it" on that pop-up reveals the folded copy.
-  useEffect(() => {
-    const ipc = window.electron?.ipcRenderer;
-    const cleanupAdd = ipc?.on('chat-suggestion', (data: any) => {
-      const { suggestion, folded } = (data ?? {}) as {
-        suggestion?: ChatSuggestion;
-        folded?: boolean;
-      };
-      if (!suggestion) return;
-      setMessages((current) =>
-        suggestion.observationId &&
-        current.some(
-          (m) => m.suggestion?.observationId === suggestion.observationId,
-        )
-          ? current
-          : [...current, suggestionMessage(suggestion, folded === true)],
-      );
-      if (!folded) scrollToBottom();
-    });
-    const cleanupReveal = ipc?.on('reveal-chat-suggestion', (data: any) => {
-      const { observationId, suggestion } = (data ?? {}) as {
-        observationId?: string;
-        suggestion?: ChatSuggestion;
-      };
-      if (!observationId) return;
-      setActivePage('chat');
-      setShowSettings(false);
-      setReviewing(null);
-      setShowHistory(false);
-      setMessages((current) => {
-        if (
-          current.some((m) => m.suggestion?.observationId === observationId)
-        ) {
-          return current.map((m) =>
-            m.suggestion?.observationId === observationId
-              ? { ...m, folded: false }
-              : m,
-          );
-        }
-        // This chat window never received it (e.g. it was recreated).
-        return suggestion
-          ? [...current, suggestionMessage(suggestion, false)]
-          : current;
-      });
-      scrollToBottom();
-    });
-    return () => {
-      if (typeof cleanupAdd === 'function') cleanupAdd();
-      if (typeof cleanupReveal === 'function') cleanupReveal();
-    };
-  }, [scrollToBottom]);
-
-  const toggleSuggestionFold = (target: ChatMessage) => {
-    const flip = (list: ChatMessage[]) =>
-      list.map((m) => (m === target ? { ...m, folded: !m.folded } : m));
-    if (reviewing) {
-      setReviewing({ ...reviewing, messages: flip(reviewing.messages) });
-    } else {
-      setMessages(flip);
-    }
-  };
-
-  // Hot-key screen capture (Cmd/Ctrl+Shift+Space) → preview thumbnail in the
-  // input bar, reusing the same pending-image strip that paste drives.
-  useEffect(() => {
-    const cleanup = window.electron?.ipcRenderer.on(
-      'hotkey-capture',
-      (data: any) => {
-        const url = (data ?? {}).imageDataUrl as string | undefined;
-        if (url) {
-          setActivePage('chat');
-          setShowSettings(false);
-          pendingHotkeyImagesRef.current.add(url);
-          setPendingImages((prev) => [...prev, url]);
-        }
-      },
-    );
-    // Tell main the listener is live so it can flush any capture that arrived
-    // while this window was still loading (e.g. the hot key just opened it).
-    window.electron?.ipcRenderer.sendMessage('hotkey-capture-ready');
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, []);
-
-  // The full-screen annotator sends back a flattened PNG. Replace the original
-  // pending capture while retaining its hot-key provenance for the tutor.
-  useEffect(() => {
-    const cleanup = window.electron?.ipcRenderer.on(
-      'image-annotation-saved',
-      (data: any) => {
-        const original = (data ?? {}).originalImageDataUrl as
-          | string
-          | undefined;
-        const annotated = (data ?? {}).imageDataUrl as string | undefined;
-        if (
-          !original ||
-          !annotated?.startsWith('data:image/') ||
-          !pendingHotkeyImagesRef.current.has(original)
-        ) {
-          return;
-        }
-        pendingHotkeyImagesRef.current.delete(original);
-        pendingHotkeyImagesRef.current.add(annotated);
-        setPendingImages((current) =>
-          current.map((image) => (image === original ? annotated : image)),
-        );
-      },
-    );
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, []);
-
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -1227,15 +806,9 @@ export default function SessionChatView() {
     setSending(restored.messages.some((m: ChatMessage) => m.isStreaming));
     setInput('');
     setPendingImages([]);
-    pendingHotkeyImagesRef.current.clear();
-    pendingContextRef.current = null;
-    setPendingContextLabel(null);
-    setPendingScreenContext(null);
-    setDiscussingSuggestion(false);
     setCurrentTutorModelId(
       result.tutorModelId || conversation.tutorModelId || currentTutorModelId,
     );
-    setRatings({});
     setReviewing(null);
     setShowHistory(false);
   };
@@ -1243,12 +816,6 @@ export default function SessionChatView() {
   const handleSend = () => {
     if (sending || startingNewSession || checkingUnderstanding) return;
     const imgs = pendingImages;
-    const hotkeyImgs = imgs.filter((src) =>
-      pendingHotkeyImagesRef.current.has(src),
-    );
-    const clearSentHotkeyImages = () => {
-      hotkeyImgs.forEach((src) => pendingHotkeyImagesRef.current.delete(src));
-    };
     const text = input;
     setInput('');
     setPendingImages([]);
@@ -1258,8 +825,7 @@ export default function SessionChatView() {
       resumeConversation(conversation)
         .then(() => {
           setSending(false);
-          sendMessage(text, imgs, hotkeyImgs);
-          clearSentHotkeyImages();
+          sendMessage(text, imgs);
         })
         .catch(() => {
           setInput(text);
@@ -1268,8 +834,7 @@ export default function SessionChatView() {
         });
       return;
     }
-    sendMessage(text, imgs, hotkeyImgs);
-    clearSentHotkeyImages();
+    sendMessage(text, imgs);
   };
 
   const handleVoiceClick = async (fromWakeWord = false) => {
@@ -1483,7 +1048,6 @@ export default function SessionChatView() {
                 <LocalModelSettings />
               </div>
               <div className="workspace-settings-column">
-                <LocalProfileSettings onSaved={(next) => setProfile(next)} />
                 <PreferencesSettings
                   {...{
                     editHideAvatar,
@@ -1499,22 +1063,9 @@ export default function SessionChatView() {
                     cocoSleeping,
                   }}
                 />
-                <MemorySettings
-                  {...{
-                    memoryDraft,
-                    setMemoryDraft,
-                    memoryDirty,
-                    saveMemory,
-                    memoryFlash,
-                  }}
-                />
                 <HealthSettings
                   {...{
                     cocoSleeping,
-                    systemPermissionHealth,
-                    permissionOpening,
-                    openSystemPermission,
-                    permissionError,
                     serviceHealth,
                     healthLoading,
                     refreshServiceHealth,
@@ -1555,16 +1106,11 @@ export default function SessionChatView() {
                 listRef,
                 visibleMessages,
                 sending,
-                profile,
                 startingNewSession,
-                sendMessage,
                 openImagePreview,
                 copiedMessageKey,
                 copyMessage,
-                toggleSuggestionFold,
                 retryMessage,
-                ratings,
-                rateMessage,
                 hasRunningTool,
               }}
             />{' '}
@@ -1579,10 +1125,6 @@ export default function SessionChatView() {
                   refreshKey={showSettings}
                 />
               }
-              discussingSuggestion={discussingSuggestion}
-              composerFocusRequest={composerFocusRequest}
-              pendingScreenContext={pendingScreenContext}
-              clearPendingScreenContext={() => setPendingScreenContext(null)}
               workspaceSessionId={reviewing?.sessionId ?? sessionIdRef.current}
               agentRunning={
                 sending &&
@@ -1599,13 +1141,8 @@ export default function SessionChatView() {
                   );
               }}
               {...{
-                pendingContextLabel,
-                pendingContextRef,
-                setPendingContextLabel,
                 pendingImages,
                 openImagePreview,
-                openImageAnnotator,
-                pendingHotkeyImagesRef,
                 setPendingImages,
                 understandingError,
                 sending,
@@ -1618,7 +1155,6 @@ export default function SessionChatView() {
                 startingNewSession,
                 reviewing,
                 handleVoiceClick,
-                profile,
                 checkingUnderstanding,
                 canSend,
                 handleSend,

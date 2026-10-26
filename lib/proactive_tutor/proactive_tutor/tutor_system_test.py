@@ -43,17 +43,6 @@ def test_initialization():
     assert ts.image_num == 0
 
 
-def test_memory_tool_is_limited_to_everyday_support():
-    everyday = TutorSystem(model_name=MODEL, scenario="everyday_support")
-    student = TutorSystem(model_name=MODEL, scenario="student_learning")
-
-    assert everyday.tutor_agent.enable_memory_tool is True
-    assert student.tutor_agent.enable_memory_tool is False
-
-    everyday.set_scenario("student_learning")
-    assert everyday.tutor_agent.enable_memory_tool is False
-
-
 def test_handle_problem_statement():
     """handle_problem_statement stores the problem text."""
     ts = _make_tutor_system()
@@ -68,19 +57,21 @@ def test_user_name_is_injected_into_tutor_context(monkeypatch):
     everyday_context = everyday._everyday_chat_messages()[0]["content"]
     assert "<user_name>\nAda &amp; Lin\n</user_name>" in everyday_context
 
-    student = TutorSystem(model_name=MODEL, scenario="student_learning")
-    student.set_user_name("Grace")
-    assert "<user_name>\nGrace\n</user_name>" in student._build_context_prompt()
+    everyday.set_user_name("Grace")
+    assert (
+        "<user_name>\nGrace\n</user_name>"
+        in (everyday._everyday_chat_messages()[0]["content"])
+    )
 
-    student.reset_session()
-    assert student.user_name == "Grace"
+    everyday.reset_session()
+    assert everyday.user_name == "Grace"
 
-    student.set_user_name("")
-    assert "<user_name>" not in student._build_context_prompt()
+    everyday.set_user_name("")
+    assert everyday._everyday_chat_messages() == []
 
     monkeypatch.delenv("COCO_USER_NAME", raising=False)
     unnamed = TutorSystem(model_name=MODEL, scenario="everyday_support")
-    assert "<user_name>" not in unnamed._everyday_chat_messages()[0]["content"]
+    assert unnamed._everyday_chat_messages() == []
 
 
 def test_get_kargs():
@@ -94,8 +85,6 @@ def test_get_kargs():
     assert kargs["conversation_history"] == ["entry1"]
     assert kargs["problem_statement"] == "Test problem"
     assert kargs["image_num"] == 3
-    assert kargs["curriculum_state"] == ts.curriculum_state
-    assert kargs["competency_counts"] == ts.competency_counts
 
 
 def test_handle_user_prompt_with_metrics_logs_tutor_call(tmp_path):
@@ -133,10 +122,9 @@ def test_handle_user_prompt_with_metrics_logs_tutor_call(tmp_path):
 
     ts = _make_tutor_system()
     ts.tutor_agent = FakeTutorAgent()
-    ts._recorder = TrainingRecorder(str(tmp_path), retain_screenshots=False)
+    ts._recorder = TrainingRecorder(str(tmp_path))
 
     guidance, returned_metrics = ts.handle_user_prompt_with_metrics(
-        obs="The user is comparing two AI responses.",
         image_paths=["screen.png"],
         user_text="Explain the next step",
     )
@@ -155,7 +143,7 @@ def test_handle_user_prompt_with_metrics_logs_tutor_call(tmp_path):
     assert rows[0]["image_paths"] == ["screen.png"]
 
 
-def test_everyday_chat_preserves_message_boundaries_and_omits_supplied_observation():
+def test_everyday_chat_preserves_message_boundaries():
     calls = []
 
     class FakeChatAgent:
@@ -184,17 +172,11 @@ def test_everyday_chat_preserves_message_boundaries_and_omits_supplied_observati
             }
 
     ts = _make_tutor_system()
-    ts.memory = "The user prefers concise answers."
+    ts.set_user_name("Ada")
     ts.tutor_agent = FakeChatAgent()
 
-    ts.handle_user_prompt_with_metrics(
-        obs="SCREEN OBSERVATION MUST NOT BE INJECTED",
-        user_text="First question",
-    )
-    ts.handle_user_prompt_with_metrics(
-        obs="ANOTHER SCREEN OBSERVATION",
-        user_text="Follow-up question",
-    )
+    ts.handle_user_prompt_with_metrics(user_text="First question")
+    ts.handle_user_prompt_with_metrics(user_text="Follow-up question")
 
     assert [message["role"] for message in calls[0]] == ["system", "user"]
     assert [message["role"] for message in calls[1]] == [
@@ -203,13 +185,12 @@ def test_everyday_chat_preserves_message_boundaries_and_omits_supplied_observati
         "assistant",
         "user",
     ]
-    assert calls[1][0]["content"].endswith("The user prefers concise answers.")
+    assert calls[1][0]["content"] == "<user_name>\nAda\n</user_name>"
     assert calls[1][1:] == [
         {"role": "user", "content": "First question"},
         {"role": "assistant", "content": "reply 1"},
         {"role": "user", "content": "Follow-up question"},
     ]
-    assert all("SCREEN OBSERVATION" not in str(call) for call in calls)
 
 
 # ------------------------------------------------------------------
@@ -222,29 +203,11 @@ def test_handle_user_prompt():
     """handle_user_prompt returns a non-empty string and appends to history."""
     ts = _make_tutor_system()
 
-    result = ts.handle_user_prompt(
-        obs="The student wrote x=3 but the answer is x=4.",
-        user_text="Problem: Solve 2x + 5 = 13",
-    )
+    result = ts.handle_user_prompt(user_text="Problem: Solve 2x + 5 = 13")
 
     assert isinstance(result, str)
     assert len(result) > 0
-    assert len(ts.conversation_history) == 1
-
-
-@requires_llm
-def test_handle_pause():
-    """handle_pause returns a non-empty string and appends to history."""
-    ts = _make_tutor_system()
-
-    result = ts.handle_pause(
-        obs="Student has stopped writing for 30 seconds.",
-        evidence="Problem: Solve 2x + 5 = 13",
-    )
-
-    assert isinstance(result, str)
-    assert len(result) > 0
-    assert len(ts.conversation_history) == 1
+    assert len(ts.conversation_history) == 2
 
 
 @requires_llm
@@ -252,10 +215,10 @@ def test_conversation_history_accumulates():
     """Multiple events accumulate in conversation_history."""
     ts = _make_tutor_system()
 
-    ts.handle_user_prompt(obs="obs1", user_text="Problem: Solve x+1=2")
-    ts.handle_pause(obs="obs2", evidence="Problem: Solve x+1=2")
+    ts.handle_user_prompt(user_text="Problem: Solve x+1=2")
+    ts.handle_user_prompt(user_text="What is x?")
 
-    assert len(ts.conversation_history) == 2
+    assert len(ts.conversation_history) == 4
     for entry in ts.conversation_history:
         assert isinstance(entry, str)
         assert len(entry) > 0
@@ -320,7 +283,7 @@ def test_audio_prompt_joins_chat_history_without_retaining_audio(monkeypatch, tm
         return "Here is what I see.", metrics
 
     monkeypatch.setattr(ts.tutor_agent, "chat_with_metrics", fake_chat)
-    ts._recorder = TrainingRecorder(str(tmp_path), retain_screenshots=False)
+    ts._recorder = TrainingRecorder(str(tmp_path))
     monkeypatch.setattr("proactive_tutor.tutor_system.time.time", lambda: 1234.5)
 
     answer, returned_metrics = ts.handle_audio_prompt_with_metrics(

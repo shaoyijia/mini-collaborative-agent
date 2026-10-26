@@ -7,9 +7,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import App from '../renderer/App';
-import ObservationBubble, {
-  type BubbleState,
-} from '../renderer/components/ObservationBubble';
 
 // The bubble most recently sent to the bubble window.
 const lastBubbleState = (sendMessage: jest.Mock) =>
@@ -17,19 +14,14 @@ const lastBubbleState = (sendMessage: jest.Mock) =>
     .filter(([channel]) => channel === 'avatar-bubble-state')
     .at(-1)?.[1]?.bubble;
 
-const mistakeEvent = () => ({
-  type: 'snapshot',
-  observation: 'The user may have made an error.',
-  status: 'mistake',
-  ts: Date.now() / 1000,
-});
+const replyReady = { sessionId: 's', requestId: 'r' };
 
 describe('App', () => {
   it('should render', () => {
     expect(render(<App />)).toBeTruthy();
   });
 
-  it('clears an observation bubble when the system suspends', async () => {
+  it('clears an agent bubble when the system suspends', async () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     (window as any).electron = {
       ipcRenderer: {
@@ -49,9 +41,9 @@ describe('App', () => {
       );
     });
     const { sendMessage } = window.electron!.ipcRenderer as any;
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
+    act(() => listeners.get('agent-reply-ready')?.(replyReady));
     expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ status: 'mistake' }),
+      expect.objectContaining({ kind: 'reply', target: replyReady }),
     );
 
     act(() => listeners.get('system-suspend')?.());
@@ -93,8 +85,9 @@ describe('App', () => {
       await act(async () => listeners.get('agent-working')?.(target));
       expect(lastBubbleState(sendMessage)).toEqual(
         expect.objectContaining({
-          tutorMessage: 'Checking results.',
-          agentWorking: { sessionId: 's', requestId: 'r' },
+          kind: 'working',
+          text: 'Checking results.',
+          target: { sessionId: 's', requestId: 'r' },
         }),
       );
       expect(screen.getByAltText('Desktop Pet')).not.toHaveClass(
@@ -108,7 +101,12 @@ describe('App', () => {
       // Final cleanup must not remove the completion reminder.
       act(() => listeners.get('agent-reply-ready')?.(target));
       act(() => listeners.get('agent-work-ended')?.({ requestId: 'r' }));
-      expect(lastBubbleState(sendMessage)?.agentReply).toEqual(target);
+      expect(lastBubbleState(sendMessage)).toEqual(
+        expect.objectContaining({
+          kind: 'reply',
+          target: { sessionId: 's', requestId: 'r' },
+        }),
+      );
     } finally {
       jest.useRealTimers();
     }
@@ -118,14 +116,18 @@ describe('App', () => {
     const { listeners, sendMessage } = setupMenuIpc();
     render(<App />);
     const target = { sessionId: 'session-1', requestId: 'request-1' };
-    await act(async () => listeners.get('coco-sleep-mode-changed')?.({ sleeping: true }));
+    await act(async () =>
+      listeners.get('coco-sleep-mode-changed')?.({ sleeping: true }),
+    );
     await act(async () => listeners.get('agent-reply-ready')?.(target));
-    await act(async () => listeners.get('coco-sleep-mode-changed')?.({ sleeping: true }));
+    await act(async () =>
+      listeners.get('coco-sleep-mode-changed')?.({ sleeping: true }),
+    );
     expect(lastBubbleState(sendMessage)).toEqual(
       expect.objectContaining({
-        agentReply: target,
-        tutorMessage: 'Your reply is ready.',
-        status: 'progress',
+        kind: 'reply',
+        target,
+        text: 'Your reply is ready.',
       }),
     );
     act(() => listeners.get('avatar-bubble-event')?.('view-conversation'));
@@ -133,7 +135,7 @@ describe('App', () => {
     expect(lastBubbleState(sendMessage)).toBeNull();
   });
 
-  it('expires ignored reply reminders without repeating or logging suggestion feedback', async () => {
+  it('expires ignored reply reminders without repeating, even while hovered', async () => {
     jest.useFakeTimers();
     try {
       const { listeners, sendMessage } = setupMenuIpc();
@@ -153,10 +155,6 @@ describe('App', () => {
       act(() => jest.advanceTimersByTime(5000));
       expect(screen.getByAltText('Desktop Pet')).toHaveClass('pet-image-awake');
       expect(lastBubbleState(sendMessage)).toBeNull();
-      expect(sendMessage).not.toHaveBeenCalledWith(
-        'training-feedback',
-        expect.anything(),
-      );
       act(() => jest.advanceTimersByTime(30000));
       expect(lastBubbleState(sendMessage)).toBeNull();
     } finally {
@@ -164,7 +162,7 @@ describe('App', () => {
     }
   });
 
-  it('dismisses reply reminders without negative suggestion feedback', async () => {
+  it('dismisses reply reminders', async () => {
     jest.useFakeTimers();
     try {
       const { listeners, sendMessage } = setupMenuIpc();
@@ -178,10 +176,6 @@ describe('App', () => {
       act(() => listeners.get('avatar-bubble-event')?.('dismiss'));
       act(() => jest.advanceTimersByTime(400));
       expect(lastBubbleState(sendMessage)).toBeNull();
-      expect(sendMessage).not.toHaveBeenCalledWith(
-        'training-feedback',
-        expect.anything(),
-      );
     } finally {
       jest.useRealTimers();
     }
@@ -192,60 +186,14 @@ describe('App', () => {
     const { invoke } = window.electron!.ipcRenderer as any;
 
     render(<App />);
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
+    act(() => listeners.get('agent-reply-ready')?.(replyReady));
 
     expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({
-        status: 'mistake',
-        phrase: expect.any(String),
-      }),
+      expect.objectContaining({ kind: 'reply', text: expect.any(String) }),
     );
     expect(invoke).not.toHaveBeenCalledWith(
       'resize-avatar-window',
       expect.anything(),
-    );
-  });
-
-  it('lets bubbles through again after sleeping with a suggestion open', async () => {
-    const suggestion = {
-      kind: 'content',
-      title: 'Try a smaller example',
-      body: 'Reduce the input first.',
-      copyText: 'Reduce the input first.',
-    };
-    const invoke = jest.fn(async (channel: string, payload?: any) => {
-      if (channel === 'get-instant-suggestion')
-        return { status: 'ready', suggestion, scenario: 'everyday_support' };
-      if (channel === 'set-coco-sleep-mode')
-        return { success: true, sleeping: payload?.sleeping };
-      return { sleeping: false };
-    });
-    const { listeners, sendMessage, chooseMenuItem } = setupMenuIpc(invoke);
-    render(<App />);
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
-    // Reveal the suggestion, which pins the bubble.
-    await act(async () => {
-      listeners.get('avatar-bubble-event')?.('help');
-    });
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ suggestion }),
-    );
-
-    await act(async () => chooseMenuItem('toggle-sleep'));
-    expect(lastBubbleState(sendMessage)).toBeNull();
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
-    expect(lastBubbleState(sendMessage)).toBeNull();
-    await act(async () => chooseMenuItem('toggle-sleep'));
-
-    act(() =>
-      listeners.get('observation-update')?.({
-        ...mistakeEvent(),
-        observation: 'A new observation after waking.',
-        status: 'stuck',
-      }),
-    );
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ status: 'stuck' }),
     );
   });
 
@@ -260,31 +208,6 @@ describe('App', () => {
     expect(container).toHaveClass('is-dragging');
     act(() => listeners.get('avatar-dragging')?.({ dragging: false }));
     expect(container).not.toHaveClass('is-dragging');
-  });
-
-  it('handles clicks and hovers from the bubble window', async () => {
-    jest.useFakeTimers();
-    const { listeners, sendMessage } = setupMenuIpc();
-    render(<App />);
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
-    const bubbleEvent = (type: string) =>
-      act(() => listeners.get('avatar-bubble-event')?.(type));
-
-    // Hovering pauses the auto-hide.
-    bubbleEvent('enter');
-    act(() => jest.advanceTimersByTime(60_000));
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ status: 'mistake', fadingOut: false }),
-    );
-
-    bubbleEvent('dismiss');
-    expect(sendMessage).not.toHaveBeenCalledWith(
-      'training-feedback',
-      expect.objectContaining({ kind: 'dismiss', status: 'mistake' }),
-    );
-    act(() => jest.advanceTimersByTime(1_000));
-    expect(lastBubbleState(sendMessage)).toBeNull();
-    jest.useRealTimers();
   });
 
   it('keeps Coco asleep on avatar click and wakes it from the menu', async () => {
@@ -359,184 +282,5 @@ describe('App', () => {
     expect(sendMessage).toHaveBeenCalledWith('open-chat-settings');
     chooseMenuItem('quit');
     expect(sendMessage).toHaveBeenCalledWith('quit-from-avatar');
-  });
-});
-
-// The invite bubble is drawn in the bubble window from the state App sends it;
-// clicks come back as avatar-bubble-event.
-const renderBubbleWindow = (bubble: BubbleState | null | undefined) =>
-  render(<ObservationBubble bubble={bubble ?? null} />);
-
-describe('session invite bubble', () => {
-  const setup = () => {
-    const listeners = new Map<string, (...args: unknown[]) => void>();
-    const sendMessage = jest.fn();
-    (window as any).electron = {
-      ipcRenderer: {
-        on: (channel: string, callback: (...args: unknown[]) => void) => {
-          listeners.set(channel, callback);
-          return () => listeners.delete(channel);
-        },
-        sendMessage,
-        invoke: jest.fn().mockResolvedValue([]),
-      },
-    };
-    render(<App />);
-    act(() => {
-      listeners.get('session-invite')?.({
-        inviteId: 'invite-1',
-        taskLabel: 'Drafting a social media thread',
-      });
-    });
-    const click = (type: string) =>
-      act(() => listeners.get('avatar-bubble-event')?.(type));
-    return { listeners, sendMessage, click };
-  };
-
-  it('shows the detected task and confirms it is on screen', () => {
-    const { sendMessage } = setup();
-    const bubble = lastBubbleState(sendMessage);
-    expect(bubble).toEqual(
-      expect.objectContaining({
-        phrase: 'Drafting a social media thread',
-        invite: { inviteId: 'invite-1', hasPreview: false },
-      }),
-    );
-    expect(sendMessage).toHaveBeenCalledWith('session-invite-shown', {
-      inviteId: 'invite-1',
-    });
-
-    const { getByText } = renderBubbleWindow(bubble);
-    expect(getByText('Support available')).toBeInTheDocument();
-    expect(getByText('Drafting a social media thread')).toBeInTheDocument();
-  });
-
-  it('starts the session from "Help me with this"', () => {
-    const { sendMessage, click } = setup();
-    click('help');
-    expect(sendMessage).toHaveBeenCalledWith('session-invite-response', {
-      inviteId: 'invite-1',
-      outcome: 'accepted',
-    });
-    expect(lastBubbleState(sendMessage)).toBeNull();
-  });
-
-  it('reports a dismissal instead of training feedback', () => {
-    const { sendMessage, click } = setup();
-    click('dismiss');
-    expect(sendMessage).toHaveBeenCalledWith('session-invite-response', {
-      inviteId: 'invite-1',
-      outcome: 'dismissed',
-    });
-    expect(
-      sendMessage.mock.calls.some(
-        ([channel]) => channel === 'training-feedback',
-      ),
-    ).toBe(false);
-  });
-
-  it('stays up through new observations until main clears it', () => {
-    const { listeners, sendMessage } = setup();
-    act(() => listeners.get('observation-update')?.(mistakeEvent()));
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ invite: expect.anything() }),
-    );
-
-    act(() => listeners.get('session-invite-clear')?.({ inviteId: 'other' }));
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ invite: expect.anything() }),
-    );
-    act(() =>
-      listeners.get('session-invite-clear')?.({ inviteId: 'invite-1' }),
-    );
-    expect(lastBubbleState(sendMessage)).toBeNull();
-  });
-
-  it('hands a second invite back to main while the bubble is pinned', () => {
-    const { listeners, sendMessage } = setup();
-    act(() => {
-      listeners.get('session-invite')?.({
-        inviteId: 'invite-2',
-        taskLabel: 'Something else',
-      });
-    });
-    expect(sendMessage).toHaveBeenCalledWith('session-invite-busy', {
-      inviteId: 'invite-2',
-    });
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({ phrase: 'Drafting a social media thread' }),
-    );
-  });
-});
-
-describe('session invite with a suggestion preview', () => {
-  const suggestion = {
-    kind: 'content',
-    title: 'Draft social media thread',
-    body: 'Open with the main result, then one post per idea.',
-    copyText: 'Open with the main result, then one post per idea.',
-  };
-
-  it('opens the preview in place and starts the session from chat', async () => {
-    const listeners = new Map<string, (...args: unknown[]) => void>();
-    const sendMessage = jest.fn();
-    const invoke = jest.fn(async (channel: string) =>
-      channel === 'get-instant-suggestion'
-        ? { status: 'ready', suggestion, scenario: 'everyday_support' }
-        : [],
-    );
-    (window as any).electron = {
-      ipcRenderer: {
-        on: (channel: string, callback: (...args: unknown[]) => void) => {
-          listeners.set(channel, callback);
-          return () => listeners.delete(channel);
-        },
-        sendMessage,
-        invoke,
-      },
-    };
-    render(<App />);
-    act(() => {
-      listeners.get('session-invite')?.({
-        inviteId: 'invite-1',
-        taskLabel: 'Announcing a blog post',
-        observationId: 'invite-obs-1',
-        rawObservation: 'The user is finishing a blog post.',
-        suggestionTitle: 'Draft social media thread',
-      });
-    });
-    expect(lastBubbleState(sendMessage)).toEqual(
-      expect.objectContaining({
-        phrase: 'Draft social media thread',
-        invite: { inviteId: 'invite-1', hasPreview: true },
-      }),
-    );
-
-    await act(async () => listeners.get('avatar-bubble-event')?.('help'));
-    await waitFor(() =>
-      expect(lastBubbleState(sendMessage)).toEqual(
-        expect.objectContaining({ suggestion }),
-      ),
-    );
-    expect(invoke).toHaveBeenCalledWith('get-instant-suggestion', {
-      observationId: 'invite-obs-1',
-    });
-    expect(sendMessage).toHaveBeenCalledWith('session-invite-revealed', {
-      inviteId: 'invite-1',
-    });
-    expect(sendMessage).not.toHaveBeenCalledWith(
-      'session-invite-response',
-      expect.anything(),
-    );
-
-    act(() => listeners.get('avatar-bubble-event')?.('chat'));
-    expect(sendMessage).toHaveBeenCalledWith(
-      'chat-about-suggestion',
-      expect.objectContaining({
-        observationId: 'invite-obs-1',
-        sessionInviteId: 'invite-1',
-        suggestion,
-      }),
-    );
   });
 });

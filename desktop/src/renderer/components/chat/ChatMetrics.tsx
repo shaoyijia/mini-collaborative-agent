@@ -1,17 +1,13 @@
-import type { LLMCallMetrics } from '../observation-types';
+import type { LLMCallMetrics } from '../agent-types';
 import { S } from './styles';
 import { formatMetricTokens, formatMetricLatency } from './message-format';
 
 export default function ChatMetrics({
-  observerMetrics,
   tutorMetrics,
 }: {
-  observerMetrics?: LLMCallMetrics | null;
   tutorMetrics?: LLMCallMetrics | null;
 }) {
-  const metrics = [observerMetrics, tutorMetrics].filter(
-    (m): m is LLMCallMetrics => Boolean(m),
-  );
+  const metrics = [tutorMetrics].filter((m): m is LLMCallMetrics => Boolean(m));
   if (metrics.length === 0) return null;
 
   const inputTokens = metrics.reduce(
