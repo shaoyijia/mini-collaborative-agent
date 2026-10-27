@@ -72,6 +72,16 @@ The user also has these controls during and after a run:
 - **Push-to-talk:** Speak directly through the chat interface.
 - **Wake word:** Optionally activate the agent with "Coco", "Hi Coco", or "Hey Coco". Wake-word detection runs locally.
 
+## Driving Coco from a script
+
+Simulation is a common approach in studying human-agent collaboration. Coco supports using a user simulator to play the user through a local driver by starting the app with `COCO_DRIVER=1 npm start` to enable it. The app then writes the driver's URL and a token to `driver.json` in its data folder (owner-only), and accepts:
+
+- `POST /sessions {"opener": ...}` starts a new chat with that first message and returns its `sessionId`.
+- `POST /sessions/<id>/messages {"text": ...}` sends a message, exactly as if it were typed.
+- `POST /sessions/<id>/answers {"toolCallId": ..., "answers": [...]}` answers an open question card, one free-text answer per question (`null` skips it).
+
+See [desktop/src/main/chat-driver.ts](desktop/src/main/chat-driver.ts) for details.
+
 ## Data & privacy
 
 There is no telemetry and no Coco server. The only data that leaves your machine is what you send to the model provider you configure. See [PRIVACY.md](PRIVACY.md) for the details. The default path for local data storage is as follows:

@@ -47,6 +47,66 @@ describe('session chat view', () => {
     expect(screen.getByPlaceholderText(/Ask Coco/)).toBeInTheDocument();
   });
 
+  it('sends a driver message like a typed one, and asks main to retry for another session', async () => {
+    const listeners = new Map<string, (data: unknown) => void>();
+    const sendMessage = jest.fn();
+    const invoke = jest.fn(async (channel: string) =>
+      channel === 'send-chat-message' ? { streamed: true } : null,
+    );
+    (window as any).electron = {
+      ipcRenderer: {
+        on: jest.fn((channel: string, callback: (data: unknown) => void) => {
+          listeners.set(channel, callback);
+          return jest.fn();
+        }),
+        sendMessage,
+        invoke,
+      },
+    };
+
+    render(<SessionChatView />);
+    await act(async () => {
+      listeners.get('session-init')?.({
+        sessionId: 'session-1',
+        problemStatement: 'General help session',
+      });
+    });
+    await act(async () => {
+      listeners.get('driver-send-message')?.({
+        id: 1,
+        sessionId: 'other-session',
+        text: 'Wrong chat',
+      });
+    });
+    expect(sendMessage).toHaveBeenCalledWith('driver-send-message-result', {
+      id: 1,
+      ok: false,
+      retry: true,
+    });
+
+    await act(async () => {
+      listeners.get('driver-send-message')?.({
+        id: 2,
+        sessionId: 'session-1',
+        text: 'Plan a weekend in Big Sur',
+      });
+    });
+    expect(sendMessage).toHaveBeenCalledWith('driver-send-message-result', {
+      id: 2,
+      ok: true,
+    });
+    expect(screen.getByText('Plan a weekend in Big Sur')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'send-chat-message',
+        expect.objectContaining({
+          sessionId: 'session-1',
+          userText: 'Plan a weekend in Big Sur',
+        }),
+      ),
+    );
+  });
+
   it('scales chat content without scaling the header', async () => {
     const listeners = new Map<string, (data: unknown) => void>();
     const invoke = jest.fn(async (channel: string) => {

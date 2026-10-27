@@ -48,17 +48,19 @@ mock HTTP server and does not call a real model.
 desktop/
 ├── src/
 │   ├── main/                          # Electron main process
-│   │   ├── main.ts                    # Window lifecycle, IPC handlers, service orchestration
-│   │   ├── preload.ts                 # contextBridge — exposes a typed IPC API to the renderer
+│   │   ├── main.ts                    # The agent core: chat sessions, agent turns, windows, voice
+│   │   ├── chat-driver.ts             # COCO_DRIVER=1: let a script act as the user
 │   │   ├── conversation-store.ts      # Persists chat conversations to disk
 │   │   ├── model-config-store.ts      # Model connections and credentials
+│   │   ├── preload.ts                 # contextBridge — exposes a typed IPC API to the renderer
 │   │   ├── menu.ts                    # macOS menu bar
 │   │   ├── util.ts                    # Dev/prod URL resolver (resolveHtmlPath)
 │   │   └── services/
 │   │       ├── manager.ts             # Spawns and manages the Python child process
 │   │       ├── agent-runs.ts          # One pi harness per conversation; Stop and answers
 │   │       ├── pi-harness.ts          # Runs one agent turn against the tutor service
-│   │       ├── wake-word-service.ts   # Feeds microphone audio to the wake-word worker
+│   │       ├── driver-server.ts       # The local driver's HTTP endpoint
+│   │       ├── wake-word-service.ts   # Runs the wake-word worker process
 │   │       └── config.json            # Service definitions (ports, commands, env vars)
 │   │
 │   ├── renderer/                      # React 19 UI

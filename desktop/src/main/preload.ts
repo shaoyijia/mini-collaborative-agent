@@ -13,8 +13,6 @@ export type Channels =
   | 'get-chat-window-pin-state'
   | 'chat-window-pin-state'
   | 'view-agent-reply'
-  | 'toggle-sleep'
-  | 'quit'
   | 'open-avatar-menu'
   | 'close-avatar-menu'
   | 'avatar-pointer-position'
@@ -37,7 +35,6 @@ export type Channels =
   | 'agent-work-ended'
   | 'agent-reply-ready'
   | 'pi-provider'
-  | 'open-avatar-actions-menu'
   | 'quit-from-avatar'
   | 'avatar-visibility-changed'
   | 'get-agent-workspace'
@@ -48,22 +45,14 @@ export type Channels =
   | 'close-chat-window'
   | 'quit-from-onboarding'
   | 'open-main-window'
-  | 'close-main-window'
   | 'system-suspend'
-  | 'shell-show-item-in-finder'
-  | 'download-benchmark-file'
-  | 'get-benchmark-files'
   | 'select-chat-files'
-  | 'select-directory'
-  | 'select-file-or-directory'
-  | 'set-user-id'
   | 'toggle-float-window'
   | 'float-window-state'
   | 'get-float-window-state'
   | 'get-chat-content-zoom-factor'
   | 'chat-content-zoom-factor'
   | 'open-chat-settings'
-  | 'session-active'
   // Local chat (SessionChatView) — session context + user turns
   | 'session-init'
   | 'start-new-chat-session'
@@ -73,6 +62,9 @@ export type Channels =
   | 'get-chat-conversations'
   | 'save-chat-conversation'
   | 'resume-chat-conversation'
+  // Local driver (COCO_DRIVER=1): a script sends a message as the user
+  | 'driver-send-message'
+  | 'driver-send-message-result'
   // Full-display image preview shared by pending and sent chat attachments
   | 'open-image-preview'
   | 'image-preview'
@@ -91,11 +83,7 @@ export type Channels =
   | 'save-model-configuration'
   | 'set-chat-model'
   // Settings (post-onboarding profile edits)
-  | 'save-profile'
   | 'update-avatar-visibility'
-  | 'avatar-renderer-ready'
-  // Renderer asks main to resize the avatar window to fit current content
-  | 'resize-avatar-window'
   | 'get-coco-sleep-mode'
   | 'set-coco-sleep-mode'
   | 'coco-sleep-mode-changed'
@@ -138,28 +126,6 @@ const electronHandler = {
     // Expose webUtils.getPathForFile to get the real file path in the renderer process
     // This is necessary because the File object in the browser/renderer does not expose the full path for security reasons
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
-  },
-  benchmark: {
-    downloadFile: (
-      apiUrl: string,
-      taskId: string,
-      filename: string,
-      workspaceDir: string,
-    ) =>
-      ipcRenderer.invoke('download-benchmark-file', {
-        apiUrl,
-        taskId,
-        filename,
-        workspaceDir,
-      }),
-    getFileList: (apiUrl: string, taskId: string) =>
-      ipcRenderer.invoke('get-benchmark-files', { apiUrl, taskId }),
-  },
-  auth: {
-    setUserId: (userId: string) => ipcRenderer.invoke('set-user-id', userId),
-  },
-  dialog: {
-    selectFileOrDirectory: () => ipcRenderer.invoke('select-file-or-directory'),
   },
 };
 

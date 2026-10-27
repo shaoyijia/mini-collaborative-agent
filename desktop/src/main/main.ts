@@ -17,17 +17,8 @@ import {
 } from './services/pi-provider';
 /* eslint global-require: off, no-console: off, promise/always-return: off */
 
-/**
- * This module executes inside of electron's main process. You can start
- * electron renderer process from here and communicate with the other processes
- * through IPC.
- *
- * When running `npm run build` or `npm run build:main`, this file is compiled to
- * `./src/main.js` using webpack. This gives us some performance wins.
- */
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { randomUUID } from 'crypto';
 import { createServer } from 'net';
 import { spawn } from 'child_process';
@@ -55,10 +46,6 @@ import {
   configureServiceModelArguments,
   startModelServices,
 } from './services/model-arguments';
-import {
-  consumeTutorStream,
-  TutorStreamTimeoutError,
-} from './services/tutor-stream';
 import type { TutorStreamEvent } from './services/tutor-stream';
 import {
   WakeWordService,
@@ -68,7 +55,6 @@ import {
   readConversations,
   saveConversation,
   saveConversationDirectory,
-  settleStoredReply,
   restorableMessages,
   interruptStaleReplies,
 } from './conversation-store';
@@ -84,8 +70,8 @@ import {
   type ModelConnection,
 } from './model-config-store';
 import AgentRuns from './services/agent-runs';
+import { startChatDriver } from './chat-driver';
 import ChatStreamStore from './services/chat-stream-store';
-import { parseAgentActivity } from '../shared/agent-execution';
 import configureFullscreenCompanionWindow from './services/fullscreen-companion-window';
 
 const dotenv = require('dotenv');
@@ -127,19 +113,6 @@ if (app.isPackaged) {
   dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
   dotenv.config();
 }
-
-// Create default workspace directory if it doesn't exist
-const ensureDefaultWorkspaceExists = () => {
-  const workspaceDir = path.join(os.homedir(), 'coco', 'tmp_workspace');
-  try {
-    if (!fs.existsSync(workspaceDir)) {
-      fs.mkdirSync(workspaceDir, { recursive: true });
-      log.info(`Created default workspace directory: ${workspaceDir}`);
-    }
-  } catch (error) {
-    log.error(`Failed to create default workspace directory: ${error}`);
-  }
-};
 
 let installUpdateAfterShutdown = false;
 const desktopAppUpdater = new DesktopAppUpdater({
@@ -195,8 +168,6 @@ let wakeWordCaptureWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let hideAvatarMode = false;
-let avatarRendererReady = false;
-let pendingOpenHistory = false;
 let cocoSleeping = false;
 let wakeWordService: WakeWordService | null = null;
 let wakeWordEnabled = false;
@@ -303,6 +274,7 @@ function agentDirectory(sessionId: string | null = currentSessionId): string {
   return directory;
 }
 
+// ── Shared Workspace ──────────────────────────────────────────────────────────────
 ipcMain.handle(
   'get-agent-workspace',
   (_event, { sessionId }: { sessionId?: string | null } = {}) => ({
@@ -379,7 +351,6 @@ const readHideAvatarSetting = (): boolean => {
 
 // ── Chat session state ────────────────────────────────────────────────────────
 let isSessionActive = false;
-let currentUserId: string | null = null;
 let currentSessionId: string | null = null;
 let pendingTaskLabel: string | null = null;
 let currentTutorModelId: string | null = null;
@@ -441,8 +412,6 @@ const preloadPath = () =>
 
 // ── Onboarding window ─────────────────────────────────────────────────────────
 // Shown once on first launch (when coco-profile.json doesn't exist yet).
-// Centered modal; after the user completes or skips it, the profile is written
-// and the normal avatar + webapp windows are created.
 
 const createOnboardingWindow = (modelsOnly = false) => {
   onboardingWindow = new BrowserWindow({
@@ -624,12 +593,7 @@ ipcMain.on('avatar-menu-action', (event, action: unknown) => {
 // ── Avatar agent bubble ───────────────────────────────────────────────────────
 // Like the ••• menu, the bubble lives in its own transparent window. Growing
 // the avatar window to fit it pushed Coco down whenever the window would have
-// crossed the menu bar, and could flash Coco out of place for a frame. The
-// avatar renderer still owns the bubble's state and handles its actions; this
-// window only draws it. Its transparent margin lets clicks through to whatever
-// is below, so it never blocks Coco or the desktop. It is a child of the avatar
-// window, so macOS moves it with Coco in the same frame while Coco is dragged;
-// it is re-placed once the drag ends, in case Coco now sits near an edge.
+// crossed the menu bar, and could flash Coco out of place for a frame.
 
 const avatarFootprint = (bounds: Rectangle) => ({
   x: bounds.x + bounds.width - AVATAR_BASE_SIZE,
@@ -951,11 +915,6 @@ const createAvatarWindow = () => {
 };
 
 // ── Chat window (local tutor session) ─────────────────────────────────────────
-// A frameless right-edge side panel hosting the local SessionChatView. Unlike
-// the old webapp window there is no WebSocket to keep alive, so it is created on
-// demand and hidden (not destroyed) on close so the conversation persists if the
-// user reopens it. All chat traffic goes straight to the local tutor server via
-// the 'send-chat-message' IPC handler — no external backend involved.
 
 const CHAT_PANEL_W = 520;
 const CHAT_EXPANDED_W = 1160;
@@ -1097,6 +1056,10 @@ const showChatPanel = () => {
   }
 };
 
+// ── Image preview ─────────────────────────────────────────────────────────────
+// Full-display preview of a chat image; in editable mode the user can annotate
+// it and the result goes back to the window that opened it.
+
 const clearImagePreviewState = (target: BrowserWindow) => {
   if (imagePreviewWindow !== target) return;
   imagePreviewWindow = null;
@@ -1177,6 +1140,11 @@ const openImagePreviewWindow = (
     clearImagePreviewState(previewWindow);
   });
 };
+
+// ── Voice: wake word ──────────────────────────────────────────────────────────
+// A hidden 1 px window streams microphone frames to a local keyword spotter
+// (WakeWordService, a sherpa-onnx child process). On "Hey Coco" the chat opens
+// and starts a push-to-talk recording. Audio never leaves the machine.
 
 const deliverPendingWakeWordDetection = (): void => {
   const pending = pendingWakeWordDetection;
@@ -1297,6 +1265,8 @@ const initializeWakeWordService = (): void => {
   });
   syncWakeWordService();
 };
+
+// ── Opening Coco: settings, tray, avatar visibility ───────────────────────────
 
 const openChatSettings = () => {
   createChatWindow();
@@ -1466,11 +1436,7 @@ const openChatForSession = (sessionId: string, problemStatement: string) => {
   }
 };
 
-// ── IPC handlers ──────────────────────────────────────────────────────────────
-// Use removeAllListeners before each .on() so hot-reloads in development never
-// accumulate duplicate handlers (which would fire multiple notifications).
-
-// ── Onboarding ────────────────────────────────────────────────────────────────
+// ── Onboarding & profile IPC ──────────────────────────────────────────────────
 
 // Returns the saved onboarding profile so renderer/webapp code can read it
 // without needing filesystem access. Returns null if the profile doesn't exist.
@@ -1484,6 +1450,10 @@ ipcMain.handle('get-profile', () => {
 });
 
 ipcMain.handle('get-chat-content-zoom-factor', () => chatContentZoomFactor);
+
+// ── Model settings ────────────────────────────────────────────────────────────
+// Settings → Models & providers: configuration, connection tests, and the
+// "Coco Health" check.
 
 // Model/provider configuration is owned by the main process. The renderer sees
 // only masked credential status; plaintext keys are accepted on save and never
@@ -1881,18 +1851,7 @@ ipcMain.handle(
   },
 );
 
-// Persist profile edits made post-onboarding (the Settings surface in the
-// webapp).
-ipcMain.handle('save-profile', (_event, profile: object) => {
-  try {
-    fs.writeFileSync(profilePath(), JSON.stringify(profile, null, 2), 'utf-8');
-    log.info('[Settings] Profile saved:', profilePath());
-    return { success: true };
-  } catch (err) {
-    log.error('[Settings] Failed to save profile:', err);
-    return { success: false, error: String(err) };
-  }
-});
+// ── Finishing onboarding, opening the chat ────────────────────────────────────
 
 ipcMain.on('onboarding-complete', (_event, profile: object) => {
   // Write the profile so isOnboardingComplete() returns true on next launch.
@@ -1933,6 +1892,9 @@ ipcMain.removeAllListeners('open-main-window');
 ipcMain.on('open-main-window', () => {
   openCoco().catch((err) => log.warn(`[Chat] Could not open Coco: ${err}`));
 });
+
+// ── Sleep mode ────────────────────────────────────────────────────────────────
+// Sleep pauses voice activation; chats and agent runs keep working.
 
 ipcMain.removeHandler('get-coco-sleep-mode');
 ipcMain.handle('get-coco-sleep-mode', () => ({
@@ -1978,6 +1940,8 @@ ipcMain.handle(
     }
   },
 );
+
+// ── Voice: wake-word settings and capture IPC ─────────────────────────────────
 
 ipcMain.removeHandler('get-wake-word-settings');
 ipcMain.handle('get-wake-word-settings', () => ({
@@ -2139,33 +2103,9 @@ ipcMain.on(
   },
 );
 
-ipcMain.on('shell-show-item-in-finder', (event, fullPath) => {
-  shell.showItemInFolder(fullPath);
-});
-
-// ── Chat session IPC handlers ─────────────────────────────────────────────────
-
-// Webapp signals that a tutor session is now active (or has ended).
-// Payload: { active: boolean; sessionId?: string }
-ipcMain.removeAllListeners('session-active');
-ipcMain.on(
-  'session-active',
-  (_event, payload: { active: boolean; sessionId?: string }) => {
-    isSessionActive = payload.active;
-    if (payload.active && payload.sessionId) {
-      currentSessionId = payload.sessionId;
-      // Dismiss the onboarding overlay if still open — a live session takes over.
-      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-        onboardingWindow.destroy();
-        onboardingWindow = null;
-      }
-    }
-    if (!payload.active) currentSessionId = null;
-    log.info(
-      `[ChatSession] isSessionActive=${payload.active}, sessionId=${payload.sessionId}`,
-    );
-  },
-);
+// ── Chat sessions ─────────────────────────────────────────────────────────────
+// A session is one conversation in the chat. Main tracks the current one and
+// pushes its context (task, user name, history) to the tutor service.
 
 // Read the local profile. Execution capabilities come from the Pi harness.
 // Returns sensible defaults when the file is missing or malformed.
@@ -2336,12 +2276,14 @@ ipcMain.handle(
   },
 );
 
-// ── Local chat turn ────────────────────────────────────────────────────────────
+// ── Agent turns: the collaboration loop ───────────────────────────────────────
 // The renderer (SessionChatView) sends the user's message — typed or spoken —
-// here, and the Pi agent harness runs one turn against the local tutor server.
-// Coco only knows what the user sends: there is no screen observation. The
-// turn ends when the agent replies, so the conversation then waits for the
-// user to continue. Pasted images arrive as data URLs.
+// here, and the conversation's pi agent harness runs one turn against the
+// local tutor service, streaming events back to the chat. During the turn the
+// agent may ask the user questions (`ask_user_question`, answered through
+// `answer-agent-question`). When it replies, the turn ends and the
+// conversation waits for the user to continue. Pasted images arrive as data
+// URLs; voice messages as base64 WAV, transcribed by the tutor service.
 interface AgentTurnInput {
   requestId: string;
   userText?: string;
@@ -2599,6 +2541,27 @@ ipcMain.on('save-image-annotation', (event, payload: unknown) => {
 
 ipcMain.handle('send-audio-message', runAgentTurn);
 
+// Show a saved conversation in the chat.
+function showConversation(sessionId: string): boolean {
+  if (currentSessionId === sessionId) {
+    showChatPanel();
+    return true;
+  }
+  const conversation = readConversations().find(
+    (item) => item.sessionId === sessionId,
+  );
+  if (!conversation) return false;
+  currentSessionId = sessionId;
+  currentTutorModelId = conversation.tutorModelId ?? currentTutorModelId;
+  pendingTaskLabel = conversation.problem;
+  isSessionActive = true;
+  activateAgentSession(sessionId);
+  openChatForSession(sessionId, conversation.problem);
+  return true;
+}
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
   sourceMapSupport.install();
@@ -2622,69 +2585,6 @@ const installExtensions = async () => {
     )
     .catch(console.log);
 };
-
-// IPC Handler for directory selection
-ipcMain.handle('select-directory', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory', 'createDirectory'],
-  });
-  return result;
-});
-
-// IPC Handler for file/directory selection (for context)
-ipcMain.handle('select-file-or-directory', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile', 'openDirectory', 'multiSelections'],
-  });
-  return result;
-});
-
-// IPC Handlers for benchmark file downloads
-ipcMain.handle(
-  'download-benchmark-file',
-  async (event, { apiUrl, taskId, filename, workspaceDir }) => {
-    try {
-      // Ensure workspace directory exists
-      if (!fs.existsSync(workspaceDir)) {
-        fs.mkdirSync(workspaceDir, { recursive: true });
-      }
-
-      // Download file from server
-      const response = await axios.get(
-        `${apiUrl}/benchmark_files/download/${taskId}/${encodeURIComponent(filename)}`,
-        { responseType: 'arraybuffer' },
-      );
-
-      // Save to workspace directory
-      const filePath = path.join(workspaceDir, filename);
-      fs.writeFileSync(filePath, Buffer.from(response.data));
-
-      log.info(`Downloaded benchmark file: ${filename} to ${filePath}`);
-      return { success: true, filePath };
-    } catch (error) {
-      log.error(`Error downloading benchmark file ${filename}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  },
-);
-
-ipcMain.handle('get-benchmark-files', async (event, { apiUrl, taskId }) => {
-  try {
-    const response = await axios.get(
-      `${apiUrl}/benchmark_files/list/${taskId}`,
-    );
-    return { success: true, data: response.data };
-  } catch (error) {
-    log.error(`Error fetching benchmark file list:`, error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-});
 
 // The desktop-avatar toggle is independent from the other editable settings,
 // so persist and apply it as soon as the checkbox changes.
@@ -2717,18 +2617,6 @@ ipcMain.handle(
     }
   },
 );
-
-// IPC Handler for setting the local user id (used only to key training data).
-// There is no auth backend in the local build; the id is a stable local uuid.
-ipcMain.handle('set-user-id', async (event, userId) => {
-  if (!userId || typeof userId !== 'string') {
-    log.error('Invalid userId provided to set-user-id');
-    return { success: false, error: 'Invalid userId' };
-  }
-  currentUserId = userId;
-  log.info(`[User] local userId set to ${userId}`);
-  return { success: true };
-});
 
 const createWindow = async () => {
   if (isDebug) {
@@ -2863,6 +2751,16 @@ app
   .then(async () => {
     await startPiInferenceBridge();
     await configureLocalServicePorts();
+    // Optional: let a local script (e.g. a user simulator) act as the user.
+    if (process.env.COCO_DRIVER === '1') {
+      await startChatDriver({
+        agentRuns,
+        getChatWindow: () =>
+          chatWindow && !chatWindow.isDestroyed() ? chatWindow : null,
+        createChatSession: () => createChatSession('General help session'),
+        showConversation,
+      }).catch((error) => log.error('[Driver] Could not start:', error));
+    }
     initializeWakeWordService();
     powerMonitor.on('suspend', () => {
       log.info('[Power] System suspended; pausing voice activation.');
@@ -2879,9 +2777,6 @@ app
       systemSuspended = false;
       syncWakeWordService();
     });
-
-    // Ensure default workspace directory exists
-    ensureDefaultWorkspaceExists();
 
     // Only start the tutor service if onboarding is already done. If not, it
     // will be started by the 'onboarding-complete' IPC handler after the user

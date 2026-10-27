@@ -517,6 +517,45 @@ export default function SessionChatView() {
     [sending, startingNewSession, submitTutorRequest],
   );
 
+  // A local driver script (COCO_DRIVER=1) sends a message as the user. It goes
+  // through sendMessage, exactly like a typed message.
+  const driverStateRef = useRef({ sending, sendMessage });
+  driverStateRef.current = { sending, sendMessage };
+  useEffect(() => {
+    const ipc = window.electron?.ipcRenderer;
+    const remove = ipc?.on('driver-send-message', (value: any) => {
+      const { id, sessionId, text } = (value ?? {}) as {
+        id?: number;
+        sessionId?: string;
+        text?: string;
+      };
+      const reply = (result: object) =>
+        ipc?.sendMessage('driver-send-message-result', { id, ...result });
+      if (!text?.trim()) {
+        reply({ ok: false, error: 'The message is empty.' });
+        return;
+      }
+      // The chat may still be switching to this conversation.
+      if (sessionIdRef.current !== sessionId) {
+        reply({ ok: false, retry: true });
+        return;
+      }
+      if (driverStateRef.current.sending) {
+        reply({ ok: false, error: 'Coco is still replying.' });
+        return;
+      }
+      setReviewing(null);
+      setShowHistory(false);
+      setShowSettings(false);
+      setActivePage('chat');
+      void driverStateRef.current.sendMessage(text, []);
+      reply({ ok: true });
+    });
+    return () => {
+      if (typeof remove === 'function') remove();
+    };
+  }, []);
+
   useEffect(() => {
     const remove = window.electron?.ipcRenderer.on(
       'reveal-agent-reply',
